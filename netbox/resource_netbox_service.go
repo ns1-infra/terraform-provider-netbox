@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+var resourceNetboxServiceProtocolOptions = []string{"tcp", "udp", "sctp"}
+
 func resourceNetboxService() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceNetboxServiceCreate,
@@ -24,27 +26,28 @@ func resourceNetboxService() *schema.Resource {
 > A service may optionally be bound to one or more specific IP addresses belonging to its parent device or VM. (If no IP addresses are bound, the service is assumed to be reachable via any assigned IP address.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validation.StringLenBetween(1, 100),
 			},
-			"virtual_machine_id": &schema.Schema{
+			"virtual_machine_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"protocol": &schema.Schema{
+			"protocol": {
 				Type:             schema.TypeString,
 				Required:         true,
-				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice([]string{"tcp", "udp", "sctp"}, false)),
+				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(resourceNetboxServiceProtocolOptions, false)),
+				Description:      buildValidValueDescription(resourceNetboxServiceProtocolOptions),
 			},
-			"port": &schema.Schema{
+			"port": {
 				Type:         schema.TypeInt,
 				Optional:     true,
 				ExactlyOneOf: []string{"port", "ports"},
 				Deprecated:   "This field is deprecated. Please use the new \"ports\" attribute instead.",
 			},
-			"ports": &schema.Schema{
+			"ports": {
 				Type:         schema.TypeSet,
 				Optional:     true,
 				ExactlyOneOf: []string{"port", "ports"},
@@ -54,7 +57,7 @@ func resourceNetboxService() *schema.Resource {
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -108,11 +111,13 @@ func resourceNetboxServiceRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Ipam.IpamServicesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*ipam.IpamServicesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*ipam.IpamServicesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -170,6 +175,12 @@ func resourceNetboxServiceDelete(d *schema.ResourceData, m interface{}) error {
 	params := ipam.NewIpamServicesDeleteParams().WithID(id)
 	_, err := api.Ipam.IpamServicesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*ipam.IpamServicesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

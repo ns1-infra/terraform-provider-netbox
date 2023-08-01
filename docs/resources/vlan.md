@@ -30,6 +30,7 @@ resource "netbox_vlan" "example2" {
   description = "Reserved example VLAN"
   tenant_id   = netbox_tenant.ex.id
   site_id     = netbox_site.ex.id
+  group_id    = netbox_vlan_group.ex.id
   tags        = [netbox_tag.ex.name]
 }
 ```
@@ -45,9 +46,10 @@ resource "netbox_vlan" "example2" {
 ### Optional
 
 - `description` (String) Defaults to `""`.
+- `group_id` (Number)
 - `role_id` (Number)
 - `site_id` (Number)
-- `status` (String) Defaults to `active`.
+- `status` (String) Valid values are `active`, `reserved` and `deprecated`. Defaults to `active`.
 - `tags` (Set of String)
 - `tenant_id` (Number)
 

@@ -22,11 +22,11 @@ func resourceNetboxCircuitType() *schema.Resource {
 > Circuits are classified by functional type. These types are completely customizable, and are typically used to convey the type of service being delivered over a circuit.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
@@ -34,7 +34,7 @@ func resourceNetboxCircuitType() *schema.Resource {
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -48,9 +48,9 @@ func resourceNetboxCircuitTypeCreate(d *schema.ResourceData, m interface{}) erro
 	data.Name = &name
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to model if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(name)
+		data.Slug = strToPtr(getSlug(name))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}
@@ -77,11 +77,13 @@ func resourceNetboxCircuitTypeRead(d *schema.ResourceData, m interface{}) error 
 	res, err := api.Circuits.CircuitsCircuitTypesRead(params, nil)
 
 	if err != nil {
-		errorcode := err.(*circuits.CircuitsCircuitTypesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*circuits.CircuitsCircuitTypesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -102,9 +104,9 @@ func resourceNetboxCircuitTypeUpdate(d *schema.ResourceData, m interface{}) erro
 	data.Name = &name
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to model if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(name)
+		data.Slug = strToPtr(getSlug(name))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}
@@ -129,6 +131,12 @@ func resourceNetboxCircuitTypeDelete(d *schema.ResourceData, m interface{}) erro
 
 	_, err := api.Circuits.CircuitsCircuitTypesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*circuits.CircuitsCircuitTypesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

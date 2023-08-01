@@ -10,7 +10,7 @@ import (
 	"github.com/fbreckle/go-netbox/netbox/client"
 	"github.com/fbreckle/go-netbox/netbox/client/dcim"
 	"github.com/fbreckle/go-netbox/netbox/models"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/id"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
@@ -62,6 +62,14 @@ func dataSourceNetboxDevices() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
+						"custom_fields": {
+							Type:     schema.TypeMap,
+							Computed: true,
+						},
+						"description": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
 						"device_id": {
 							Type:     schema.TypeInt,
 							Computed: true,
@@ -110,6 +118,18 @@ func dataSourceNetboxDevices() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
+						"rack_id": {
+							Type:     schema.TypeInt,
+							Computed: true,
+						},
+						"rack_face": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"rack_position": {
+							Type:     schema.TypeFloat,
+							Computed: true,
+						},
 					},
 				},
 			},
@@ -141,14 +161,14 @@ func dataSourceNetboxDevicesRead(d *schema.ResourceData, m interface{}) error {
 				var regionString = v.(string)
 				params.Region = &regionString
 			case "role_id":
-				var roleIdString = v.(string)
-				params.RoleID = &roleIdString
+				var roleIDString = v.(string)
+				params.RoleID = &roleIDString
 			case "site_id":
-				var siteIdString = v.(string)
-				params.SiteID = &siteIdString
+				var siteIDString = v.(string)
+				params.SiteID = &siteIDString
 			case "tenant_id":
-				var tenantIdString = v.(string)
-				params.TenantID = &tenantIdString
+				var tenantIDString = v.(string)
+				params.TenantID = &tenantIDString
 			default:
 				return fmt.Errorf("'%s' is not a supported filter parameter", k)
 			}
@@ -189,6 +209,9 @@ func dataSourceNetboxDevicesRead(d *schema.ResourceData, m interface{}) error {
 		if device.Comments != "" {
 			mapping["comments"] = device.Comments
 		}
+		if device.Description != "" {
+			mapping["description"] = device.Description
+		}
 		mapping["device_id"] = device.ID
 		if device.DeviceType != nil {
 			mapping["device_type_id"] = device.DeviceType.ID
@@ -223,9 +246,21 @@ func dataSourceNetboxDevicesRead(d *schema.ResourceData, m interface{}) error {
 		if device.Status != nil {
 			mapping["status"] = *device.Status.Value
 		}
+		if device.CustomFields != nil {
+			mapping["custom_fields"] = device.CustomFields
+		}
+		if device.Rack != nil {
+			mapping["rack_id"] = device.Rack.ID
+		}
+		if device.Position != nil {
+			mapping["rack_position"] = device.Position
+		}
+		if device.Face != nil {
+			mapping["rack_face"] = device.Face.Value
+		}
 		s = append(s, mapping)
 	}
 
-	d.SetId(resource.UniqueId())
+	d.SetId(id.UniqueId())
 	return d.Set("devices", s)
 }

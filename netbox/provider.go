@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fbreckle/go-netbox/netbox/client"
 	"github.com/fbreckle/go-netbox/netbox/client/status"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -32,6 +31,22 @@ func init() {
 				atLeastOneOf[i] = fmt.Sprintf("`%s`", l)
 			}
 			desc += fmt.Sprintf(" At least one of %s must be given.", joinStringWithFinalConjunction(atLeastOneOf, ", ", "or"))
+		}
+
+		if s.ExactlyOneOf != nil && len(s.ExactlyOneOf) > 0 {
+			exactlyOneOf := make([]string, len(s.ExactlyOneOf))
+			for i, l := range s.ExactlyOneOf {
+				exactlyOneOf[i] = fmt.Sprintf("`%s`", l)
+			}
+			desc += fmt.Sprintf(" Exactly one of %s must be given.", joinStringWithFinalConjunction(exactlyOneOf, ", ", "or"))
+		}
+
+		if s.RequiredWith != nil && len(s.RequiredWith) > 0 {
+			requires := make([]string, len(s.RequiredWith))
+			for i, c := range s.RequiredWith {
+				requires[i] = fmt.Sprintf("`%s`", c)
+			}
+			desc += fmt.Sprintf(" Required when %s is set.", joinStringWithFinalConjunction(requires, ", ", "and"))
 		}
 
 		if s.ConflictsWith != nil && len(s.ConflictsWith) > 0 {
@@ -63,7 +78,11 @@ func Provider() *schema.Provider {
 			"netbox_cluster_type":         resourceNetboxClusterType(),
 			"netbox_cluster":              resourceNetboxCluster(),
 			"netbox_contact":              resourceNetboxContact(),
+			"netbox_contact_group":        resourceNetboxContactGroup(),
+			"netbox_contact_assignment":   resourceNetboxContactAssignment(),
+			"netbox_contact_role":         resourceNetboxContactRole(),
 			"netbox_device":               resourceNetboxDevice(),
+			"netbox_device_interface":     resourceNetboxDeviceInterface(),
 			"netbox_device_type":          resourceNetboxDeviceType(),
 			"netbox_manufacturer":         resourceNetboxManufacturer(),
 			"netbox_tenant":               resourceNetboxTenant(),
@@ -76,35 +95,48 @@ func Provider() *schema.Provider {
 			"netbox_prefix":               resourceNetboxPrefix(),
 			"netbox_available_prefix":     resourceNetboxAvailablePrefix(),
 			"netbox_primary_ip":           resourceNetboxPrimaryIP(),
+			"netbox_device_primary_ip":    resourceNetboxDevicePrimaryIP(),
 			"netbox_device_role":          resourceNetboxDeviceRole(),
 			"netbox_tag":                  resourceNetboxTag(),
 			"netbox_cluster_group":        resourceNetboxClusterGroup(),
 			"netbox_site":                 resourceNetboxSite(),
 			"netbox_vlan":                 resourceNetboxVlan(),
+			"netbox_vlan_group":           resourceNetboxVlanGroup(),
 			"netbox_ipam_role":            resourceNetboxIpamRole(),
-			"netbox_ip_range":             resourceNetboxIpRange(),
+			"netbox_ip_range":             resourceNetboxIPRange(),
 			"netbox_region":               resourceNetboxRegion(),
 			"netbox_aggregate":            resourceNetboxAggregate(),
 			"netbox_rir":                  resourceNetboxRir(),
+			"netbox_route_target":         resourceNetboxRouteTarget(),
 			"netbox_circuit":              resourceNetboxCircuit(),
 			"netbox_circuit_type":         resourceNetboxCircuitType(),
 			"netbox_circuit_provider":     resourceNetboxCircuitProvider(),
 			"netbox_circuit_termination":  resourceNetboxCircuitTermination(),
 			"netbox_user":                 resourceNetboxUser(),
+			"netbox_permission":           resourceNetboxPermission(),
 			"netbox_token":                resourceNetboxToken(),
 			"netbox_custom_field":         resourceCustomField(),
 			"netbox_asn":                  resourceNetboxAsn(),
 			"netbox_location":             resourceNetboxLocation(),
 			"netbox_site_group":           resourceNetboxSiteGroup(),
+			"netbox_rack":                 resourceNetboxRack(),
+			"netbox_rack_role":            resourceNetboxRackRole(),
+			"netbox_rack_reservation":     resourceNetboxRackReservation(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
+			"netbox_asn":              dataSourceNetboxAsn(),
+			"netbox_asns":             dataSourceNetboxAsns(),
 			"netbox_cluster":          dataSourceNetboxCluster(),
 			"netbox_cluster_group":    dataSourceNetboxClusterGroup(),
 			"netbox_cluster_type":     dataSourceNetboxClusterType(),
+			"netbox_contact":          dataSourceNetboxContact(),
+			"netbox_contact_role":     dataSourceNetboxContactRole(),
+			"netbox_contact_group":    dataSourceNetboxContactGroup(),
 			"netbox_tenant":           dataSourceNetboxTenant(),
 			"netbox_tenants":          dataSourceNetboxTenants(),
 			"netbox_tenant_group":     dataSourceNetboxTenantGroup(),
 			"netbox_vrf":              dataSourceNetboxVrf(),
+			"netbox_vrfs":             dataSourceNetboxVrfs(),
 			"netbox_platform":         dataSourceNetboxPlatform(),
 			"netbox_prefix":           dataSourceNetboxPrefix(),
 			"netbox_prefixes":         dataSourceNetboxPrefixes(),
@@ -115,18 +147,24 @@ func Provider() *schema.Provider {
 			"netbox_tag":              dataSourceNetboxTag(),
 			"netbox_virtual_machines": dataSourceNetboxVirtualMachine(),
 			"netbox_interfaces":       dataSourceNetboxInterfaces(),
-			"netbox_ip_addresses":     dataSourceNetboxIpAddresses(),
-			"netbox_ip_range":         dataSourceNetboxIpRange(),
+			"netbox_ipam_role":        dataSourceNetboxIPAMRole(),
+			"netbox_route_target":     dataSourceNetboxRouteTarget(),
+			"netbox_ip_addresses":     dataSourceNetboxIPAddresses(),
+			"netbox_ip_range":         dataSourceNetboxIPRange(),
 			"netbox_region":           dataSourceNetboxRegion(),
 			"netbox_vlan":             dataSourceNetboxVlan(),
+			"netbox_vlans":            dataSourceNetboxVlans(),
+			"netbox_vlan_group":       dataSourceNetboxVlanGroup(),
 			"netbox_site_group":       dataSourceNetboxSiteGroup(),
+			"netbox_racks":            dataSourceNetboxRacks(),
+			"netbox_rack_role":        dataSourceNetboxRackRole(),
 		},
 		Schema: map[string]*schema.Schema{
 			"server_url": {
 				Type:        schema.TypeString,
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("NETBOX_SERVER_URL", nil),
-				Description: "Location of Netbox server including scheme (http or https) and optional port, but without trailing slash. Can be set via the `NETBOX_SERVER_URL` environment variable.",
+				Description: "Location of Netbox server including scheme (http or https) and optional port. Can be set via the `NETBOX_SERVER_URL` environment variable.",
 			},
 			"api_token": {
 				Type:        schema.TypeString,
@@ -138,7 +176,7 @@ func Provider() *schema.Provider {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("NETBOX_ALLOW_INSECURE_HTTPS", false),
-				Description: "Flag to set whether to allow https with invalid certificates. Can be set via the `NETBOX_ALLOW_INSECURE_HTTPS` environment variable.",
+				Description: "Flag to set whether to allow https with invalid certificates. Can be set via the `NETBOX_ALLOW_INSECURE_HTTPS` environment variable. Defaults to `false`.",
 			},
 			"headers": {
 				Type:        schema.TypeMap,
@@ -146,11 +184,17 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.EnvDefaultFunc("NETBOX_HEADERS", map[string]interface{}{}),
 				Description: "Set these header on all requests to Netbox. Can be set via the `NETBOX_HEADERS` environment variable.",
 			},
+			"strip_trailing_slashes_from_url": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("NETBOX_STRIP_TRAILING_SLASHES_FROM_URL", true),
+				Description: "If true, strip trailing slashes from the `server_url` parameter and print a warning when doing so. Note that using trailing slashes in the `server_url` parameter will usually lead to errors. Can be set via the `NETBOX_STRIP_TRAILING_SLASHES_FROM_URL` environment variable. Defaults to `true`.",
+			},
 			"skip_version_check": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("NETBOX_SKIP_VERSION_CHECK", false),
-				Description: "If true, do not try to determine the running Netbox version at provider startup. Disables warnings about possibly unsupported Netbox version. Also useful for local testing on terraform plans. Can be set via the `NETBOX_SKIP_VERSION_CHECK` environment variable.",
+				Description: "If true, do not try to determine the running Netbox version at provider startup. Disables warnings about possibly unsupported Netbox version. Also useful for local testing on terraform plans. Can be set via the `NETBOX_SKIP_VERSION_CHECK` environment variable. Defaults to `false`.",
 			},
 			"request_timeout": {
 				Type:        schema.TypeInt,
@@ -165,16 +209,41 @@ func Provider() *schema.Provider {
 }
 
 func providerConfigure(ctx context.Context, data *schema.ResourceData) (interface{}, diag.Diagnostics) {
-
 	var diags diag.Diagnostics
 
 	config := Config{
-		ServerURL:          data.Get("server_url").(string),
-		APIToken:           data.Get("api_token").(string),
-		AllowInsecureHttps: data.Get("allow_insecure_https").(bool),
-		Headers:            data.Get("headers").(map[string]interface{}),
-		RequestTimeout:     data.Get("request_timeout").(int),
+		APIToken:                    data.Get("api_token").(string),
+		AllowInsecureHTTPS:          data.Get("allow_insecure_https").(bool),
+		Headers:                     data.Get("headers").(map[string]interface{}),
+		RequestTimeout:              data.Get("request_timeout").(int),
+		StripTrailingSlashesFromURL: data.Get("strip_trailing_slashes_from_url").(bool),
 	}
+
+	serverURL := data.Get("server_url").(string)
+
+	// Unless explicitly switched off, strip trailing slashes from the server url
+	// Trailing slashes cause errors as seen in https://github.com/e-breuninger/terraform-provider-netbox/issues/198
+	// and https://github.com/e-breuninger/terraform-provider-netbox/issues/300
+	stripTrailingSlashesFromURL := data.Get("strip_trailing_slashes_from_url").(bool)
+
+	if stripTrailingSlashesFromURL {
+		trimmed := false
+
+		// This is Go's poor man's while loop
+		for strings.HasSuffix(serverURL, "/") {
+			serverURL = strings.TrimRight(serverURL, "/")
+			trimmed = true
+		}
+		if trimmed {
+			diags = append(diags, diag.Diagnostic{
+				Severity: diag.Warning,
+				Summary:  "Stripped trailing slashes from the `server_url` parameter",
+				Detail:   "Trailing slashes in the `server_url` parameter lead to problems in most setups, so all trailing slashes were stripped. Use the `strip_trailing_slashes_from_url` parameter to disable this feature or remove all trailing slashes in the `server_url` to disable this warning.",
+			})
+		}
+	}
+
+	config.ServerURL = serverURL
 
 	netboxClient, clientError := config.Client()
 	if clientError != nil {
@@ -187,7 +256,7 @@ func providerConfigure(ctx context.Context, data *schema.ResourceData) (interfac
 
 	if !skipVersionCheck {
 		req := status.NewStatusListParams()
-		res, err := netboxClient.(*client.NetBoxAPI).Status.StatusList(req, nil)
+		res, err := netboxClient.Status.StatusList(req, nil)
 
 		if err != nil {
 			return nil, diag.FromErr(err)
@@ -195,10 +264,9 @@ func providerConfigure(ctx context.Context, data *schema.ResourceData) (interfac
 
 		netboxVersion := res.GetPayload().(map[string]interface{})["netbox-version"].(string)
 
-		supportedVersions := []string{"3.3.0", "3.3.1", "3.3.2", "3.3.3", "3.3.4", "3.3.5"}
+		supportedVersions := []string{"3.4.3", "3.4.4", "3.4.5", "3.4.6", "3.4.7", "3.4.8", "3.4.9", "3.4.10"}
 
 		if !slices.Contains(supportedVersions, netboxVersion) {
-
 			// Currently, there is no way to test these warnings. There is an issue to track this: https://github.com/hashicorp/terraform-plugin-sdk/issues/864
 			diags = append(diags, diag.Diagnostic{
 				Severity: diag.Warning,

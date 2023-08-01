@@ -12,7 +12,6 @@ import (
 )
 
 func TestAccNetboxSiteGroup_basic(t *testing.T) {
-
 	testSlug := "s_grp_basic"
 	testName := testAccGetTestName(testSlug)
 	randomSlug := testAccGetTestName(testSlug)
@@ -53,7 +52,6 @@ resource "netbox_site_group" "child" {
 }
 
 func TestAccNetboxSiteGroup_defaultSlug(t *testing.T) {
-
 	testSlug := "sitegrp_defSlug"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -67,7 +65,7 @@ resource "netbox_site_group" "test" {
 }`, testName),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("netbox_site_group.test", "name", testName),
-					resource.TestCheckResourceAttr("netbox_site_group.test", "slug", testName),
+					resource.TestCheckResourceAttr("netbox_site_group.test", "slug", getSlug(testName)),
 				),
 			},
 		},

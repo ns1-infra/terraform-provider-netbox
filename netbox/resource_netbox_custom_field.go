@@ -40,6 +40,7 @@ func resourceCustomField() *schema.Resource {
 					models.CustomFieldTypeValueURL,
 					models.CustomFieldTypeValueSelect,
 					models.CustomFieldTypeValueMultiselect,
+					models.CustomFieldTypeLabelJSON,
 				}, false),
 			},
 			"content_types": {
@@ -73,6 +74,10 @@ func resourceCustomField() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			"group_name": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			"label": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -95,7 +100,7 @@ func resourceCustomField() *schema.Resource {
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -109,6 +114,7 @@ func resourceNetboxCustomFieldUpdate(d *schema.ResourceData, m interface{}) erro
 		Name:            strToPtr(d.Get("name").(string)),
 		Type:            d.Get("type").(string),
 		Description:     d.Get("description").(string),
+		GroupName:       d.Get("group_name").(string),
 		Label:           d.Get("label").(string),
 		Required:        d.Get("required").(bool),
 		ValidationRegex: d.Get("validation_regex").(string),
@@ -159,6 +165,7 @@ func resourceNetboxCustomFieldCreate(d *schema.ResourceData, m interface{}) erro
 		Name:            strToPtr(d.Get("name").(string)),
 		Type:            d.Get("type").(string),
 		Description:     d.Get("description").(string),
+		GroupName:       d.Get("group_name").(string),
 		Label:           d.Get("label").(string),
 		Required:        d.Get("required").(bool),
 		ValidationRegex: d.Get("validation_regex").(string),
@@ -221,7 +228,6 @@ func resourceNetboxCustomFieldRead(d *schema.ResourceData, m interface{}) error 
 		}
 		return err
 	}
-
 	d.Set("name", res.GetPayload().Name)
 	d.Set("type", *res.GetPayload().Type.Value)
 
@@ -238,6 +244,7 @@ func resourceNetboxCustomFieldRead(d *schema.ResourceData, m interface{}) error 
 	}
 
 	d.Set("description", res.GetPayload().Description)
+	d.Set("group_name", res.GetPayload().GroupName)
 	d.Set("label", res.GetPayload().Label)
 	d.Set("required", res.GetPayload().Required)
 
@@ -253,5 +260,14 @@ func resourceNetboxCustomFieldDelete(d *schema.ResourceData, m interface{}) erro
 	id, _ := strconv.ParseInt(d.Id(), 10, 64)
 	params := extras.NewExtrasCustomFieldsDeleteParams().WithID(id)
 	_, err := api.Extras.ExtrasCustomFieldsDelete(params, nil)
-	return err
+	if err != nil {
+		if errresp, ok := err.(*extras.ExtrasCustomFieldsDeleteDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				d.SetId("")
+			}
+		}
+		return err
+	}
+	return nil
 }

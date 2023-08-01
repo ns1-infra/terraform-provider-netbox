@@ -14,11 +14,11 @@ func dataSourceNetboxClusterType() *schema.Resource {
 		Read:        dataSourceNetboxClusterTypeRead,
 		Description: `:meta:subcategory:Virtualization:`,
 		Schema: map[string]*schema.Schema{
-			"cluster_type_id": &schema.Schema{
+			"cluster_type_id": {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
@@ -41,10 +41,10 @@ func dataSourceNetboxClusterTypeRead(d *schema.ResourceData, m interface{}) erro
 	}
 
 	if *res.GetPayload().Count > int64(1) {
-		return errors.New("More than one result. Specify a more narrow filter")
+		return errors.New("more than one result, specify a more narrow filter")
 	}
 	if *res.GetPayload().Count == int64(0) {
-		return errors.New("No result")
+		return errors.New("no result")
 	}
 	result := res.GetPayload().Results[0]
 	d.Set("cluster_type_id", result.ID)

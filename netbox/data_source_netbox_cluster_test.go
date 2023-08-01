@@ -8,7 +8,6 @@ import (
 )
 
 func TestAccNetboxClusterDataSource_basic(t *testing.T) {
-
 	testSlug := "clstr_ds_basic"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -38,21 +37,30 @@ resource "netbox_cluster" "test" {
   cluster_type_id = netbox_cluster_type.test.id
   cluster_group_id = netbox_cluster_group.test.id
   site_id = netbox_site.test.id
+  comments = "%[1]scomments"
+  description = "%[1]sdescription"
   tags = [netbox_tag.test.name]
 }
 
-data "netbox_cluster" "test" {
-  depends_on = [netbox_cluster.test, netbox_cluster_group.test]
-  name = "%[1]s"
+data "netbox_cluster" "by_name" {
+  name = netbox_cluster.test.name
+}
+
+data "netbox_cluster" "by_site_id" {
+  site_id = netbox_cluster.test.site_id
 }
 `, testName),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("data.netbox_cluster.test", "name", testName),
-					resource.TestCheckResourceAttrPair("data.netbox_cluster.test", "cluster_type_id", "netbox_cluster_type.test", "id"),
-					resource.TestCheckResourceAttrPair("data.netbox_cluster.test", "cluster_group_id", "netbox_cluster_group.test", "id"),
-					resource.TestCheckResourceAttrPair("data.netbox_cluster.test", "site_id", "netbox_site.test", "id"),
-					resource.TestCheckResourceAttr("data.netbox_cluster.test", "tags.#", "1"),
-					resource.TestCheckResourceAttr("data.netbox_cluster.test", "tags.0", testName),
+					resource.TestCheckResourceAttrPair("data.netbox_cluster.by_name", "id", "netbox_cluster.test", "id"),
+					resource.TestCheckResourceAttrPair("data.netbox_cluster.by_site_id", "id", "netbox_cluster.test", "id"),
+					resource.TestCheckResourceAttr("data.netbox_cluster.by_name", "name", testName),
+					resource.TestCheckResourceAttrPair("data.netbox_cluster.by_name", "cluster_type_id", "netbox_cluster_type.test", "id"),
+					resource.TestCheckResourceAttrPair("data.netbox_cluster.by_name", "cluster_group_id", "netbox_cluster_group.test", "id"),
+					resource.TestCheckResourceAttr("data.netbox_cluster.by_name", "comments", testName+"comments"),
+					resource.TestCheckResourceAttr("data.netbox_cluster.by_name", "description", testName+"description"),
+					resource.TestCheckResourceAttrPair("data.netbox_cluster.by_name", "site_id", "netbox_site.test", "id"),
+					resource.TestCheckResourceAttr("data.netbox_cluster.by_name", "tags.#", "1"),
+					resource.TestCheckResourceAttr("data.netbox_cluster.by_name", "tags.0", testName),
 				),
 			},
 		},

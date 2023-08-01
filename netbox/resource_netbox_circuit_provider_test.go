@@ -12,7 +12,6 @@ import (
 )
 
 func TestAccNetboxCircuitProvider_basic(t *testing.T) {
-
 	testSlug := "circuit_prov"
 	testName := testAccGetTestName(testSlug)
 	randomSlug := testAccGetTestName(testSlug)
@@ -32,7 +31,7 @@ resource "netbox_circuit_provider" "test" {
 				),
 			},
 			{
-				Config: fmt.Sprintf(`	  
+				Config: fmt.Sprintf(`
 resource "netbox_circuit_provider" "test" {
   name = "%[1]s"
   slug = "%[2]s"

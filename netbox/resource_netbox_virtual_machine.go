@@ -2,6 +2,7 @@ package netbox
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 
 	"github.com/fbreckle/go-netbox/netbox/client"
@@ -11,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
+
+var resourceNetboxVirtualMachineStatusOptions = []string{"offline", "active", "planned", "staged", "failed", "decommissioning"}
 
 func resourceNetboxVirtualMachine() *schema.Resource {
 	return &schema.Resource{
@@ -24,68 +27,81 @@ func resourceNetboxVirtualMachine() *schema.Resource {
 > A virtual machine is a virtualized compute instance. These behave in NetBox very similarly to device objects, but without any physical attributes. For example, a VM may have interfaces assigned to it with IP addresses and VLANs, however its interfaces cannot be connected via cables (because they are virtual). Each VM may also define its compute, memory, and storage resources as well.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"cluster_id": &schema.Schema{
+			"cluster_id": {
 				Type:         schema.TypeInt,
 				Optional:     true,
 				AtLeastOneOf: []string{"site_id", "cluster_id"},
 			},
-			"tenant_id": &schema.Schema{
+			"tenant_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"device_id": &schema.Schema{
+			"device_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"platform_id": &schema.Schema{
+			"platform_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"role_id": &schema.Schema{
+			"role_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"site_id": &schema.Schema{
+			"site_id": {
 				Type:         schema.TypeInt,
 				Optional:     true,
 				AtLeastOneOf: []string{"site_id", "cluster_id"},
 			},
-			"comments": &schema.Schema{
+			"comments": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"memory_mb": &schema.Schema{
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"memory_mb": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"vcpus": &schema.Schema{
+			"vcpus": {
 				Type:     schema.TypeFloat,
 				Optional: true,
 			},
-			"disk_size_gb": &schema.Schema{
+			"disk_size_gb": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"status": &schema.Schema{
+			"status": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"offline", "active", "planned", "staged", "failed", "decommissioning"}, false),
+				ValidateFunc: validation.StringInSlice(resourceNetboxVirtualMachineStatusOptions, false),
 				Default:      "active",
-				Description:  "Valid values are `offline`, `active`, `planned`, `staged`, `failed` and `decommissioning`",
+				Description:  buildValidValueDescription(resourceNetboxVirtualMachineStatusOptions),
 			},
 			tagsKey: tagsSchema,
-			"primary_ipv4": &schema.Schema{
+			"primary_ipv4": {
 				Type:     schema.TypeInt,
 				Computed: true,
+			},
+			"primary_ipv6": {
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+			"local_context_data": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "This is best managed through the use of `jsonencode` and a map of settings.",
 			},
 			customFieldsKey: customFieldsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 		SchemaVersion: 1,
 		StateUpgraders: []schema.StateUpgrader{
@@ -119,8 +135,8 @@ func resourceNetboxVirtualMachineCreate(ctx context.Context, d *schema.ResourceD
 		data.Site = &siteID
 	}
 
-	comments := d.Get("comments").(string)
-	data.Comments = comments
+	data.Comments = d.Get("comments").(string)
+	data.Description = d.Get("description").(string)
 
 	vcpusValue, ok := d.GetOk("vcpus")
 	if ok {
@@ -164,10 +180,19 @@ func resourceNetboxVirtualMachineCreate(ctx context.Context, d *schema.ResourceD
 		data.Role = &roleID
 	}
 
+	localContextValue, ok := d.GetOk("local_context_data")
+	if ok {
+		var jsonObj any
+		localContextBA := []byte(localContextValue.(string))
+		if err := json.Unmarshal(localContextBA, &jsonObj); err == nil {
+			data.LocalContextData = jsonObj
+		}
+	}
+
 	data.Status = d.Get("status").(string)
 
-	data.Tags, _ = getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
-
+	tags, diags := getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
+	data.Tags = tags
 	ct, ok := d.GetOk(customFieldsKey)
 	if ok {
 		data.CustomFields = ct
@@ -182,7 +207,7 @@ func resourceNetboxVirtualMachineCreate(ctx context.Context, d *schema.ResourceD
 
 	d.SetId(strconv.FormatInt(res.GetPayload().ID, 10))
 
-	return resourceNetboxVirtualMachineRead(ctx, d, m)
+	return append(resourceNetboxVirtualMachineRead(ctx, d, m), diags...)
 }
 
 func resourceNetboxVirtualMachineRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -196,11 +221,13 @@ func resourceNetboxVirtualMachineRead(ctx context.Context, d *schema.ResourceDat
 
 	res, err := api.Virtualization.VirtualizationVirtualMachinesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*virtualization.VirtualizationVirtualMachinesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*virtualization.VirtualizationVirtualMachinesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return diag.FromErr(err)
 	}
@@ -219,6 +246,12 @@ func resourceNetboxVirtualMachineRead(ctx context.Context, d *schema.ResourceDat
 		d.Set("primary_ipv4", vm.PrimaryIp4.ID)
 	} else {
 		d.Set("primary_ipv4", nil)
+	}
+
+	if vm.PrimaryIp6 != nil {
+		d.Set("primary_ipv6", vm.PrimaryIp6.ID)
+	} else {
+		d.Set("primary_ipv6", nil)
 	}
 
 	if vm.Tenant != nil {
@@ -257,7 +290,16 @@ func resourceNetboxVirtualMachineRead(ctx context.Context, d *schema.ResourceDat
 		d.Set("site_id", nil)
 	}
 
+	if vm.LocalContextData != nil {
+		if jsonArr, err := json.Marshal(vm.LocalContextData); err == nil {
+			d.Set("local_context_data", string(jsonArr))
+		}
+	} else {
+		d.Set("local_context_data", nil)
+	}
+
 	d.Set("comments", vm.Comments)
+	d.Set("description", vm.Description)
 	vcpus := vm.Vcpus
 	if vcpus != nil {
 		d.Set("vcpus", vm.Vcpus)
@@ -344,23 +386,29 @@ func resourceNetboxVirtualMachineUpdate(ctx context.Context, d *schema.ResourceD
 		data.Disk = &diskSize
 	}
 
-	commentsValue, ok := d.GetOk("comments")
+	primaryIP4Value, ok := d.GetOk("primary_ipv4")
 	if ok {
-		comments := commentsValue.(string)
-		data.Comments = comments
-	} else {
-		comments := " "
-		data.Comments = comments
+		primaryIP4 := int64(primaryIP4Value.(int))
+		data.PrimaryIp4 = &primaryIP4
 	}
 
-	primaryIPValue, ok := d.GetOk("primary_ipv4")
+	primaryIP6Value, ok := d.GetOk("primary_ipv6")
 	if ok {
-		primaryIP := int64(primaryIPValue.(int))
-		data.PrimaryIp4 = &primaryIP
+		primaryIP6 := int64(primaryIP6Value.(int))
+		data.PrimaryIp6 = &primaryIP6
 	}
 
-	data.Tags, _ = getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
+	localContextValue, ok := d.GetOk("local_context_data")
+	if ok {
+		var jsonObj any
+		localContextBA := []byte(localContextValue.(string))
+		if err := json.Unmarshal(localContextBA, &jsonObj); err == nil {
+			data.LocalContextData = jsonObj
+		}
+	}
 
+	tags, diags := getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
+	data.Tags = tags
 	cf, ok := d.GetOk(customFieldsKey)
 	if ok {
 		data.CustomFields = cf
@@ -368,18 +416,22 @@ func resourceNetboxVirtualMachineUpdate(ctx context.Context, d *schema.ResourceD
 
 	if d.HasChanges("comments") {
 		// check if comment is set
-		commentsValue, ok := d.GetOk("comments")
-		comments := ""
-		if !ok {
-			// Setting an space string deletes the comment
-			comments = " "
+		if commentsValue, ok := d.GetOk("comments"); ok {
+			data.Comments = commentsValue.(string)
 		} else {
-			comments = commentsValue.(string)
+			data.Comments = " "
 		}
-		data.Comments = comments
+	}
+	if d.HasChanges("description") {
+		// check if description is set
+		if descriptionValue, ok := d.GetOk("description"); ok {
+			data.Description = descriptionValue.(string)
+		} else {
+			data.Description = " "
+		}
 	}
 
-	//if d.HasChanges("status") {
+	// if d.HasChanges("status") {
 	if status, ok := d.GetOk("status"); ok {
 		data.Status = status.(string)
 	}
@@ -392,7 +444,7 @@ func resourceNetboxVirtualMachineUpdate(ctx context.Context, d *schema.ResourceD
 		return diag.FromErr(err)
 	}
 
-	return resourceNetboxVirtualMachineRead(ctx, d, m)
+	return append(resourceNetboxVirtualMachineRead(ctx, d, m), diags...)
 }
 
 func resourceNetboxVirtualMachineDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -405,6 +457,12 @@ func resourceNetboxVirtualMachineDelete(ctx context.Context, d *schema.ResourceD
 
 	_, err := api.Virtualization.VirtualizationVirtualMachinesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*virtualization.VirtualizationVirtualMachinesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return diag.FromErr(err)
 	}
 	return diags

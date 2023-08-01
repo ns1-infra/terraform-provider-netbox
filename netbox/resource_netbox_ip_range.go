@@ -10,19 +10,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-func resourceNetboxIpRange() *schema.Resource {
+var resourceNetboxIPRangeStatusOptions = []string{"active", "reserved", "deprecated"}
+
+func resourceNetboxIPRange() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceNetboxIpRangeCreate,
-		Read:   resourceNetboxIpRangeRead,
-		Update: resourceNetboxIpRangeUpdate,
-		Delete: resourceNetboxIpRangeDelete,
+		Create: resourceNetboxIPRangeCreate,
+		Read:   resourceNetboxIPRangeRead,
+		Update: resourceNetboxIPRangeUpdate,
+		Delete: resourceNetboxIPRangeDelete,
 
 		Description: `:meta:subcategory:IP Address Management (IPAM):From the [official documentation](https://docs.netbox.dev/en/stable/features/ipam/#ip-ranges):
 
 > This model represents an arbitrary range of individual IPv4 or IPv6 addresses, inclusive of its starting and ending addresses. For instance, the range 192.0.2.10 to 192.0.2.20 has eleven members. (The total member count is available as the size property on an IPRange instance.) Like prefixes and IP addresses, each IP range may optionally be assigned to a VRF and/or tenant.`,
 
 		Schema: map[string]*schema.Schema{
-			"start_address": &schema.Schema{
+			"start_address": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
@@ -30,11 +32,12 @@ func resourceNetboxIpRange() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"status": &schema.Schema{
+			"status": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Default:      "active",
-				ValidateFunc: validation.StringInSlice([]string{"active", "reserved", "deprecated"}, false),
+				ValidateFunc: validation.StringInSlice(resourceNetboxIPRangeStatusOptions, false),
+				Description:  buildValidValueDescription(resourceNetboxIPRangeStatusOptions),
 			},
 			"tenant_id": {
 				Type:     schema.TypeInt,
@@ -44,23 +47,23 @@ func resourceNetboxIpRange() *schema.Resource {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"vrf_id": &schema.Schema{
+			"vrf_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"description": &schema.Schema{
+			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
 
-func resourceNetboxIpRangeCreate(d *schema.ResourceData, m interface{}) error {
+func resourceNetboxIPRangeCreate(d *schema.ResourceData, m interface{}) error {
 	api := m.(*client.NetBoxAPI)
 	data := models.WritableIPRange{}
 
@@ -83,21 +86,23 @@ func resourceNetboxIpRangeCreate(d *schema.ResourceData, m interface{}) error {
 	}
 	d.SetId(strconv.FormatInt(res.GetPayload().ID, 10))
 
-	return resourceNetboxIpRangeUpdate(d, m)
+	return resourceNetboxIPRangeUpdate(d, m)
 }
 
-func resourceNetboxIpRangeRead(d *schema.ResourceData, m interface{}) error {
+func resourceNetboxIPRangeRead(d *schema.ResourceData, m interface{}) error {
 	api := m.(*client.NetBoxAPI)
 	id, _ := strconv.ParseInt(d.Id(), 10, 64)
 	params := ipam.NewIpamIPRangesReadParams().WithID(id)
 
 	res, err := api.Ipam.IpamIPRangesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*ipam.IpamIPRangesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*ipam.IpamIPRangesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -135,7 +140,7 @@ func resourceNetboxIpRangeRead(d *schema.ResourceData, m interface{}) error {
 	return nil
 }
 
-func resourceNetboxIpRangeUpdate(d *schema.ResourceData, m interface{}) error {
+func resourceNetboxIPRangeUpdate(d *schema.ResourceData, m interface{}) error {
 	api := m.(*client.NetBoxAPI)
 	id, _ := strconv.ParseInt(d.Id(), 10, 64)
 	data := models.WritableIPRange{}
@@ -169,15 +174,21 @@ func resourceNetboxIpRangeUpdate(d *schema.ResourceData, m interface{}) error {
 	if err != nil {
 		return err
 	}
-	return resourceNetboxIpRangeRead(d, m)
+	return resourceNetboxIPRangeRead(d, m)
 }
 
-func resourceNetboxIpRangeDelete(d *schema.ResourceData, m interface{}) error {
+func resourceNetboxIPRangeDelete(d *schema.ResourceData, m interface{}) error {
 	api := m.(*client.NetBoxAPI)
 	id, _ := strconv.ParseInt(d.Id(), 10, 64)
 	params := ipam.NewIpamIPRangesDeleteParams().WithID(id)
 	_, err := api.Ipam.IpamIPRangesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*ipam.IpamIPRangesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 

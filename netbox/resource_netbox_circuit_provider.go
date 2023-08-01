@@ -24,11 +24,11 @@ func resourceNetboxCircuitProvider() *schema.Resource {
 > Each provider may be assigned an autonomous system number (ASN), an account number, and contact information.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
@@ -36,7 +36,7 @@ func resourceNetboxCircuitProvider() *schema.Resource {
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -50,9 +50,9 @@ func resourceNetboxCircuitProviderCreate(d *schema.ResourceData, m interface{}) 
 	data.Name = &name
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to model if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(name)
+		data.Slug = strToPtr(getSlug(name))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}
@@ -80,11 +80,13 @@ func resourceNetboxCircuitProviderRead(d *schema.ResourceData, m interface{}) er
 	res, err := api.Circuits.CircuitsProvidersRead(params, nil)
 
 	if err != nil {
-		errorcode := err.(*circuits.CircuitsProvidersReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*circuits.CircuitsProvidersReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -105,9 +107,9 @@ func resourceNetboxCircuitProviderUpdate(d *schema.ResourceData, m interface{}) 
 	data.Name = &name
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to model if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(name)
+		data.Slug = strToPtr(getSlug(name))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}

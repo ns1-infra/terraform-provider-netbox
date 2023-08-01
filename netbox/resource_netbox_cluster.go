@@ -23,30 +23,38 @@ func resourceNetboxCluster() *schema.Resource {
 > Physical devices may be associated with clusters as hosts. This allows users to track on which host(s) a particular virtual machine may reside. However, NetBox does not support pinning a specific VM within a cluster to a particular host device.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"cluster_type_id": &schema.Schema{
+			"cluster_type_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"cluster_group_id": &schema.Schema{
+			"cluster_group_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"site_id": &schema.Schema{
+			"comments": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"site_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"tenant_id": &schema.Schema{
+			"tenant_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
 			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -66,6 +74,9 @@ func resourceNetboxClusterCreate(d *schema.ResourceData, m interface{}) error {
 		clusterGroupID := int64(clusterGroupIDValue.(int))
 		data.Group = &clusterGroupID
 	}
+
+	data.Comments = getOptionalStr(d, "comments", false)
+	data.Description = getOptionalStr(d, "description", false)
 
 	if siteIDValue, ok := d.GetOk("site_id"); ok {
 		siteID := int64(siteIDValue.(int))
@@ -100,11 +111,13 @@ func resourceNetboxClusterRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Virtualization.VirtualizationClustersRead(params, nil)
 	if err != nil {
-		errorcode := err.(*virtualization.VirtualizationClustersReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*virtualization.VirtualizationClustersReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -117,6 +130,9 @@ func resourceNetboxClusterRead(d *schema.ResourceData, m interface{}) error {
 	} else {
 		d.Set("cluster_group_id", nil)
 	}
+
+	d.Set("comments", res.GetPayload().Comments)
+	d.Set("description", res.GetPayload().Description)
 
 	if res.GetPayload().Site != nil {
 		d.Set("site_id", res.GetPayload().Site.ID)
@@ -151,6 +167,9 @@ func resourceNetboxClusterUpdate(d *schema.ResourceData, m interface{}) error {
 		data.Group = &clusterGroupID
 	}
 
+	data.Comments = getOptionalStr(d, "comments", true)
+	data.Description = getOptionalStr(d, "description", true)
+
 	if siteIDValue, ok := d.GetOk("site_id"); ok {
 		siteID := int64(siteIDValue.(int))
 		data.Site = &siteID
@@ -182,6 +201,12 @@ func resourceNetboxClusterDelete(d *schema.ResourceData, m interface{}) error {
 
 	_, err := api.Virtualization.VirtualizationClustersDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*virtualization.VirtualizationClustersDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

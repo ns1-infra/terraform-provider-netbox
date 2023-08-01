@@ -47,7 +47,6 @@ resource "netbox_vlan" "test" {
 }
 
 func TestAccNetboxPrefix_basic(t *testing.T) {
-
 	testPrefix := "1.1.1.0/25"
 	testSlug := "prefix"
 	testVid := "123"
@@ -213,6 +212,17 @@ resource "netbox_prefix" "test" {
 					resource.TestCheckResourceAttr("netbox_prefix.test", "prefix", testPrefix),
 					resource.TestCheckResourceAttr("netbox_prefix.test", "status", "active"),
 					resource.TestCheckResourceAttr("netbox_prefix.test", "description", fmt.Sprintf("%s 2", testDesc)),
+				),
+			},
+			{
+				Config: testAccNetboxPrefixFullDependencies(testName, randomSlug, testVid) + fmt.Sprintf(`
+resource "netbox_prefix" "test" {
+  prefix = "%s"
+  status = "active"
+}`, testPrefix),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_prefix.test", "prefix", testPrefix),
+					resource.TestCheckResourceAttr("netbox_prefix.test", "status", "active"),
 				),
 			},
 			{

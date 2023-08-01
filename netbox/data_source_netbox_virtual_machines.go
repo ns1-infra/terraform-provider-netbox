@@ -9,7 +9,7 @@ import (
 	"github.com/fbreckle/go-netbox/netbox/client"
 	"github.com/fbreckle/go-netbox/netbox/client/virtualization"
 	"github.com/fbreckle/go-netbox/netbox/models"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/id"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
@@ -63,6 +63,10 @@ func dataSourceNetboxVirtualMachine() *schema.Resource {
 						},
 						"custom_fields": {
 							Type:     schema.TypeMap,
+							Computed: true,
+						},
+						"description": {
+							Type:     schema.TypeString,
 							Computed: true,
 						},
 						"disk_size_gb": {
@@ -205,6 +209,9 @@ func dataSourceNetboxVirtualMachineRead(d *schema.ResourceData, m interface{}) e
 		if v.Comments != "" {
 			mapping["comments"] = v.Comments
 		}
+		if v.Description != "" {
+			mapping["description"] = v.Description
+		}
 		if v.ConfigContext != nil {
 			if configContext, err := json.Marshal(v.ConfigContext); err == nil {
 				mapping["config_context"] = string(configContext)
@@ -267,6 +274,6 @@ func dataSourceNetboxVirtualMachineRead(d *schema.ResourceData, m interface{}) e
 		s = append(s, mapping)
 	}
 
-	d.SetId(resource.UniqueId())
+	d.SetId(id.UniqueId())
 	return d.Set("vms", s)
 }

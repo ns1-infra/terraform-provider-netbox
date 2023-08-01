@@ -34,6 +34,10 @@ Each location must have a name that is unique within its parent site and locatio
 				Computed:     true,
 				ValidateFunc: validation.StringLenBetween(0, 30),
 			},
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			"site_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
@@ -46,7 +50,7 @@ Each location must have a name that is unique within its parent site and locatio
 			customFieldsKey: customFieldsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -60,12 +64,14 @@ func resourceNetboxLocationCreate(d *schema.ResourceData, m interface{}) error {
 	data.Name = &name
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(name)
+		data.Slug = strToPtr(getSlug(name))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}
+
+	data.Description = getOptionalStr(d, "description", true)
 
 	siteIDValue, ok := d.GetOk("site_id")
 	if ok {
@@ -104,11 +110,13 @@ func resourceNetboxLocationRead(d *schema.ResourceData, m interface{}) error {
 	res, err := api.Dcim.DcimLocationsRead(params, nil)
 
 	if err != nil {
-		errorcode := err.(*dcim.DcimLocationsReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*dcim.DcimLocationsReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -117,6 +125,7 @@ func resourceNetboxLocationRead(d *schema.ResourceData, m interface{}) error {
 
 	d.Set("name", location.Name)
 	d.Set("slug", location.Slug)
+	d.Set("description", location.Description)
 
 	if res.GetPayload().Site != nil {
 		d.Set("site_id", res.GetPayload().Site.ID)
@@ -149,11 +158,18 @@ func resourceNetboxLocationUpdate(d *schema.ResourceData, m interface{}) error {
 	data.Name = &name
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(name)
+		data.Slug = strToPtr(getSlug(name))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
+	}
+
+	data.Description = getOptionalStr(d, "description", true)
+
+	siteIDValue, ok := d.GetOk("site_id")
+	if ok {
+		data.Site = int64ToPtr(int64(siteIDValue.(int)))
 	}
 
 	tenantIDValue, ok := d.GetOk("tenant_id")
@@ -186,6 +202,12 @@ func resourceNetboxLocationDelete(d *schema.ResourceData, m interface{}) error {
 
 	_, err := api.Dcim.DcimLocationsDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*dcim.DcimLocationsDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

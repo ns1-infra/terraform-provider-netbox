@@ -13,11 +13,12 @@ import (
 
 // Config struct for the netbox provider
 type Config struct {
-	APIToken           string
-	ServerURL          string
-	AllowInsecureHttps bool
-	Headers            map[string]interface{}
-	RequestTimeout     int
+	APIToken                    string
+	ServerURL                   string
+	AllowInsecureHTTPS          bool
+	Headers                     map[string]interface{}
+	RequestTimeout              int
+	StripTrailingSlashesFromURL bool
 }
 
 // customHeaderTransport is a transport that adds the specified headers on
@@ -28,20 +29,19 @@ type customHeaderTransport struct {
 }
 
 // Client does the heavy lifting of establishing a base Open API client to Netbox.
-func (cfg *Config) Client() (interface{}, error) {
-
+func (cfg *Config) Client() (*netboxclient.NetBoxAPI, error) {
 	log.WithFields(log.Fields{
 		"server_url": cfg.ServerURL,
 	}).Debug("Initializing Netbox client")
 
 	if cfg.APIToken == "" {
-		return nil, fmt.Errorf("Missing netbox API key")
+		return nil, fmt.Errorf("missing netbox API key")
 	}
 
 	// parse serverUrl
 	parsedURL, urlParseError := urlx.Parse(cfg.ServerURL)
 	if urlParseError != nil {
-		return nil, fmt.Errorf("Error while trying to parse URL: %s", urlParseError)
+		return nil, fmt.Errorf("error while trying to parse URL: %s", urlParseError)
 	}
 
 	desiredRuntimeClientSchemes := []string{parsedURL.Scheme}
@@ -52,7 +52,7 @@ func (cfg *Config) Client() (interface{}, error) {
 
 	// build http client
 	clientOpts := httptransport.TLSClientOptions{
-		InsecureSkipVerify: cfg.AllowInsecureHttps,
+		InsecureSkipVerify: cfg.AllowInsecureHTTPS,
 	}
 
 	trans, err := httptransport.TLSTransport(clientOpts)
@@ -86,7 +86,6 @@ func (cfg *Config) Client() (interface{}, error) {
 
 // RoundTrip adds the headers specified in the transport on every request.
 func (t customHeaderTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-
 	for key, value := range t.headers {
 		r.Header.Add(key, fmt.Sprintf("%v", value))
 	}

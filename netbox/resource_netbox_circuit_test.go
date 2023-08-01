@@ -24,7 +24,7 @@ resource "netbox_circuit_provider" "test" {
 resource "netbox_circuit_type" "test" {
 	name = "%[1]s"
 	slug = "%[2]s"
-}									  
+}
 `, testName, testSlug)
 }
 func TestAccNetboxCircuit_basic(t *testing.T) {
@@ -42,7 +42,7 @@ resource "netbox_circuit" "test" {
   status = "active"
   provider_id = netbox_circuit_provider.test.id
   type_id = netbox_circuit_type.test.id
-}`, testName, randomSlug),
+}`, testName),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("netbox_circuit.test", "cid", testName),
 					resource.TestCheckResourceAttrPair("netbox_circuit.test", "provider_id", "netbox_circuit_provider.test", "id"),

@@ -22,17 +22,17 @@ func resourceNetboxToken() *schema.Resource {
 > A token is a unique identifier mapped to a NetBox user account. Each user may have one or more tokens which he or she can use for authentication when making REST API requests. To create a token, navigate to the API tokens page under your user profile.`,
 
 		Schema: map[string]*schema.Schema{
-			"user_id": &schema.Schema{
+			"user_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"key": &schema.Schema{
+			"key": {
 				Type:         schema.TypeString,
 				Sensitive:    true,
 				Optional:     true,
 				ValidateFunc: validation.StringLenBetween(40, 256),
 			},
-			"allowed_ips": &schema.Schema{
+			"allowed_ips": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -40,17 +40,21 @@ func resourceNetboxToken() *schema.Resource {
 					ValidateFunc: validation.IsCIDR,
 				},
 			},
-			"last_used": &schema.Schema{
+			"write_enabled": {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
+			"last_used": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"expires": &schema.Schema{
+			"expires": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -72,6 +76,8 @@ func resourceNetboxTokenCreate(d *schema.ResourceData, m interface{}) error {
 		data.AllowedIps[i] = v
 	}
 
+	data.WriteEnabled = d.Get("write_enabled").(bool)
+
 	params := users.NewUsersTokensCreateParams().WithData(&data)
 	res, err := api.Users.UsersTokensCreate(params, nil)
 	if err != nil {
@@ -89,11 +95,13 @@ func resourceNetboxTokenRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Users.UsersTokensRead(params, nil)
 	if err != nil {
-		errorcode := err.(*users.UsersTokensReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*users.UsersTokensReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -107,6 +115,7 @@ func resourceNetboxTokenRead(d *schema.ResourceData, m interface{}) error {
 	d.Set("last_used", token.LastUsed)
 	d.Set("expires", token.Expires)
 	d.Set("allowed_ips", token.AllowedIps)
+	d.Set("write_enabled", token.WriteEnabled)
 
 	return nil
 }
@@ -128,6 +137,8 @@ func resourceNetboxTokenUpdate(d *schema.ResourceData, m interface{}) error {
 		data.AllowedIps[i] = v
 	}
 
+	data.WriteEnabled = d.Get("write_enabled").(bool)
+
 	params := users.NewUsersTokensUpdateParams().WithID(id).WithData(&data)
 	_, err := api.Users.UsersTokensUpdate(params, nil)
 	if err != nil {
@@ -142,6 +153,12 @@ func resourceNetboxTokenDelete(d *schema.ResourceData, m interface{}) error {
 	params := users.NewUsersTokensDeleteParams().WithID(id)
 	_, err := api.Users.UsersTokensDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*users.UsersTokensDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	d.SetId("")

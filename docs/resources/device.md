@@ -56,10 +56,15 @@ resource "netbox_device" "test" {
 
 - `cluster_id` (Number)
 - `comments` (String)
+- `custom_fields` (Map of String)
+- `description` (String)
 - `location_id` (Number)
 - `platform_id` (Number)
+- `rack_face` (String) Valid values are `front` and `rear`. Required when `rack_position` is set.
+- `rack_id` (Number)
+- `rack_position` (Number)
 - `serial` (String)
-- `status` (String) Defaults to `active`.
+- `status` (String) Valid values are `offline`, `active`, `planned`, `staged`, `failed` and `inventory`. Defaults to `active`.
 - `tags` (Set of String)
 - `tenant_id` (Number)
 
@@ -67,5 +72,6 @@ resource "netbox_device" "test" {
 
 - `id` (String) The ID of this resource.
 - `primary_ipv4` (Number)
+- `primary_ipv6` (Number)
 
 

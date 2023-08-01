@@ -14,21 +14,25 @@ func dataSourceNetboxTenant() *schema.Resource {
 		Read:        dataSourceNetboxTenantRead,
 		Description: `:meta:subcategory:Tenancy:`,
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:         schema.TypeString,
 				Computed:     true,
 				Optional:     true,
 				AtLeastOneOf: []string{"name", "slug"},
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
 				AtLeastOneOf: []string{"name", "slug"},
 			},
-			"group_id": &schema.Schema{
+			"group_id": {
 				Type:     schema.TypeInt,
 				Computed: true,
+			},
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
 			},
 		},
 	}
@@ -55,15 +59,16 @@ func dataSourceNetboxTenantRead(d *schema.ResourceData, m interface{}) error {
 	}
 
 	if *res.GetPayload().Count > int64(1) {
-		return errors.New("More than one result. Specify a more narrow filter")
+		return errors.New("more than one result, specify a more narrow filter")
 	}
 	if *res.GetPayload().Count == int64(0) {
-		return errors.New("No result")
+		return errors.New("no result")
 	}
 	result := res.GetPayload().Results[0]
 	d.SetId(strconv.FormatInt(result.ID, 10))
 	d.Set("name", result.Name)
 	d.Set("slug", result.Slug)
+	d.Set("description", result.Description)
 	if result.Group != nil {
 		d.Set("group_id", result.Group.ID)
 	}

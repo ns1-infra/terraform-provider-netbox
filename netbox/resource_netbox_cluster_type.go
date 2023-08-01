@@ -21,18 +21,18 @@ func resourceNetboxClusterType() *schema.Resource {
 > A cluster type represents a technology or mechanism by which a cluster is formed. For example, you might create a cluster type named "VMware vSphere" for a locally hosted cluster or "DigitalOcean NYC3" for one hosted by a cloud provider.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -44,9 +44,9 @@ func resourceNetboxClusterTypeCreate(d *schema.ResourceData, m interface{}) erro
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
 
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
@@ -77,11 +77,13 @@ func resourceNetboxClusterTypeRead(d *schema.ResourceData, m interface{}) error 
 
 	res, err := api.Virtualization.VirtualizationClusterTypesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*virtualization.VirtualizationClusterTypesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*virtualization.VirtualizationClusterTypesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -101,9 +103,9 @@ func resourceNetboxClusterTypeUpdate(d *schema.ResourceData, m interface{}) erro
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
 
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
@@ -130,6 +132,12 @@ func resourceNetboxClusterTypeDelete(d *schema.ResourceData, m interface{}) erro
 
 	_, err := api.Virtualization.VirtualizationClusterTypesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*virtualization.VirtualizationClusterTypesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

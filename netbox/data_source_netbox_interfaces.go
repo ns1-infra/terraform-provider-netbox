@@ -8,7 +8,7 @@ import (
 	"github.com/fbreckle/go-netbox/netbox/client"
 	"github.com/fbreckle/go-netbox/netbox/client/virtualization"
 	"github.com/fbreckle/go-netbox/netbox/models"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/id"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
@@ -44,6 +44,10 @@ func dataSourceNetboxInterfaces() *schema.Resource {
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
+						"id": {
+							Type:     schema.TypeInt,
+							Computed: true,
+						},
 						"description": {
 							Type:     schema.TypeString,
 							Computed: true,
@@ -150,7 +154,7 @@ func dataSourceNetboxInterfaceRead(d *schema.ResourceData, m interface{}) error 
 			case "name":
 				params.Name = &vString
 			case "tag":
-				params.Tag = &vString
+				params.Tag = []string{vString} //TODO: switch schema to list?
 			case "vm_id":
 				params.VirtualMachineID = &vString
 			default:
@@ -183,6 +187,7 @@ func dataSourceNetboxInterfaceRead(d *schema.ResourceData, m interface{}) error 
 	var s []map[string]interface{}
 	for _, v := range filteredInterfaces {
 		var mapping = make(map[string]interface{})
+		mapping["id"] = v.ID
 		if v.Description != "" {
 			mapping["description"] = v.Description
 		}
@@ -222,9 +227,8 @@ func dataSourceNetboxInterfaceRead(d *schema.ResourceData, m interface{}) error 
 		s = append(s, mapping)
 	}
 
-	d.SetId(resource.UniqueId())
+	d.SetId(id.UniqueId())
 	return d.Set("interfaces", s)
-
 }
 
 func flattenVlanAttributes(vlans []*models.NestedVLAN) []map[string]interface{} {

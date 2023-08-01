@@ -24,26 +24,26 @@ func resourceNetboxContact() *schema.Resource {
 > Contacts are reused for assignments, so each unique contact must be created only once and can be assigned to any number of NetBox objects, and there is no limit to the number of assigned contacts an object may have. Most core objects in NetBox can have contacts assigned to them.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
 			tagsKey: tagsSchema,
-			"group_id": &schema.Schema{
+			"group_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"email": &schema.Schema{
+			"email": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"phone": &schema.Schema{
+			"phone": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -54,7 +54,7 @@ func resourceNetboxContactCreate(d *schema.ResourceData, m interface{}) error {
 	name := d.Get("name").(string)
 	phone := d.Get("phone").(string)
 	email := d.Get("email").(string)
-	group_id := int64(d.Get("group_id").(int))
+	groupID := int64(d.Get("group_id").(int))
 
 	tags, _ := getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
 
@@ -65,8 +65,8 @@ func resourceNetboxContactCreate(d *schema.ResourceData, m interface{}) error {
 	data.Phone = phone
 	data.Email = strfmt.Email(email)
 
-	if group_id != 0 {
-		data.Group = &group_id
+	if groupID != 0 {
+		data.Group = &groupID
 	}
 
 	params := tenancy.NewTenancyContactsCreateParams().WithData(data)
@@ -88,11 +88,13 @@ func resourceNetboxContactRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Tenancy.TenancyContactsRead(params, nil)
 	if err != nil {
-		errorcode := err.(*tenancy.TenancyContactsReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*tenancy.TenancyContactsReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -116,7 +118,7 @@ func resourceNetboxContactUpdate(d *schema.ResourceData, m interface{}) error {
 	name := d.Get("name").(string)
 	phone := d.Get("phone").(string)
 	email := d.Get("email").(string)
-	group_id := int64(d.Get("group_id").(int))
+	groupID := int64(d.Get("group_id").(int))
 
 	tags, _ := getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
 
@@ -124,8 +126,8 @@ func resourceNetboxContactUpdate(d *schema.ResourceData, m interface{}) error {
 	data.Tags = tags
 	data.Phone = phone
 	data.Email = strfmt.Email(email)
-	if group_id != 0 {
-		data.Group = &group_id
+	if groupID != 0 {
+		data.Group = &groupID
 	}
 
 	params := tenancy.NewTenancyContactsPartialUpdateParams().WithID(id).WithData(&data)
@@ -146,6 +148,12 @@ func resourceNetboxContactDelete(d *schema.ResourceData, m interface{}) error {
 
 	_, err := api.Tenancy.TenancyContactsDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*tenancy.TenancyContactsDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

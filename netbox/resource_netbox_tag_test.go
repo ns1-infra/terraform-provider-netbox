@@ -12,7 +12,6 @@ import (
 )
 
 func TestAccNetboxTag_basic(t *testing.T) {
-
 	testSlug := "tag_basic"
 	testName := testAccGetTestName(testSlug)
 	randomSlug := testAccGetTestName(testSlug)
@@ -45,7 +44,6 @@ resource "netbox_tag" "test" {
 }
 
 func TestAccNetboxTag_defaultSlug(t *testing.T) {
-
 	testSlug := "tag_defSlug"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -59,7 +57,7 @@ resource "netbox_tag" "test" {
 }`, testName),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("netbox_tag.test", "name", testName),
-					resource.TestCheckResourceAttr("netbox_tag.test", "slug", testName),
+					resource.TestCheckResourceAttr("netbox_tag.test", "slug", getSlug(testName)),
 				),
 			},
 		},

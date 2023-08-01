@@ -22,13 +22,21 @@ resource "netbox_tenant" "test" {
 }
 
 resource "netbox_site" "test" {
-  name = "%[1]s"
+  name   = "%[1]s"
   status = "active"
+}
+
+resource "netbox_vlan_group" "test_group" {
+	name       = "%[1]s"
+	slug       = "%[1]s"
+	min_vid    = 1
+	max_vid    = 4094
+	scope_type = "dcim.site"
+	scope_id   = netbox_site.test.id
 }
 `, testName)
 }
 func TestAccNetboxVlan_basic(t *testing.T) {
-
 	testSlug := "vlan_basic"
 	testName := testAccGetTestName(testSlug)
 	testVid := "777"
@@ -40,7 +48,7 @@ func TestAccNetboxVlan_basic(t *testing.T) {
 				Config: testAccNetboxVlanFullDependencies(testName) + fmt.Sprintf(`
 resource "netbox_vlan" "test_basic" {
   name = "%s"
-  vid = "%s"
+  vid  = "%s"
   tags = []
 }`, testName, testVid),
 				Check: resource.ComposeTestCheckFunc(
@@ -61,7 +69,6 @@ resource "netbox_vlan" "test_basic" {
 }
 
 func TestAccNetboxVlan_with_dependencies(t *testing.T) {
-
 	testSlug := "vlan_with_dependencies"
 	testName := testAccGetTestName(testSlug)
 	testVid := "666"
@@ -73,19 +80,21 @@ func TestAccNetboxVlan_with_dependencies(t *testing.T) {
 			{
 				Config: testAccNetboxVlanFullDependencies(testName) + fmt.Sprintf(`
 resource "netbox_vlan" "test_with_dependencies" {
-  name = "%s"
-  vid = "%s"
+  name        = "%s"
+  vid         = "%s"
   description = "%s"
-  status = "active"
-  tenant_id = netbox_tenant.test.id
-  site_id = netbox_site.test.id
-  tags = [netbox_tag.test.name]
+  status      = "active"
+  tenant_id   = netbox_tenant.test.id
+  site_id     = netbox_site.test.id
+  group_id    = netbox_vlan_group.test_group.id
+  tags        = [netbox_tag.test.name]
 }`, testName, testVid, testDescription),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("netbox_vlan.test_with_dependencies", "name", testName),
 					resource.TestCheckResourceAttr("netbox_vlan.test_with_dependencies", "vid", testVid),
 					resource.TestCheckResourceAttr("netbox_vlan.test_with_dependencies", "description", testDescription),
 					resource.TestCheckResourceAttr("netbox_vlan.test_with_dependencies", "status", "active"),
+					resource.TestCheckResourceAttrPair("netbox_vlan.test_with_dependencies", "group_id", "netbox_vlan_group.test_group", "id"),
 					resource.TestCheckResourceAttrPair("netbox_vlan.test_with_dependencies", "tenant_id", "netbox_tenant.test", "id"),
 					resource.TestCheckResourceAttrPair("netbox_vlan.test_with_dependencies", "site_id", "netbox_site.test", "id"),
 					resource.TestCheckResourceAttr("netbox_vlan.test_with_dependencies", "tags.#", "1"),

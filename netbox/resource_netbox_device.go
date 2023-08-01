@@ -12,6 +12,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+var resourceNetboxDeviceStatusOptions = []string{"offline", "active", "planned", "staged", "failed", "inventory"}
+var resourceNetboxDeviceRackFaceOptions = []string{"front", "rear"}
+
 func resourceNetboxDevice() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourceNetboxDeviceCreate,
@@ -24,60 +27,85 @@ func resourceNetboxDevice() *schema.Resource {
 > Every piece of hardware which is installed within a site or rack exists in NetBox as a device. Devices are measured in rack units (U) and can be half depth or full depth. A device may have a height of 0U: These devices do not consume vertical rack space and cannot be assigned to a particular rack unit. A common example of a 0U device is a vertically-mounted PDU.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"device_type_id": &schema.Schema{
+			"device_type_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"tenant_id": &schema.Schema{
+			"tenant_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"cluster_id": &schema.Schema{
+			"cluster_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"platform_id": &schema.Schema{
+			"platform_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"location_id": &schema.Schema{
+			"location_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"role_id": &schema.Schema{
+			"role_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"serial": &schema.Schema{
+			"serial": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"site_id": &schema.Schema{
+			"site_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"comments": &schema.Schema{
+			"comments": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 			tagsKey: tagsSchema,
-			"primary_ipv4": &schema.Schema{
+			"primary_ipv4": {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			"status": &schema.Schema{
+			"primary_ipv6": {
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+			"status": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"offline", "active", "planned", "staged", "failed", "inventory"}, false),
+				ValidateFunc: validation.StringInSlice(resourceNetboxDeviceStatusOptions, false),
+				Description:  buildValidValueDescription(resourceNetboxDeviceStatusOptions),
 				Default:      "active",
 			},
+			"rack_id": {
+				Type:     schema.TypeInt,
+				Optional: true,
+			},
+			"rack_face": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				RequiredWith: []string{"rack_position"},
+				ValidateFunc: validation.StringInSlice(resourceNetboxDeviceRackFaceOptions, false),
+				Description:  buildValidValueDescription(resourceNetboxDeviceRackFaceOptions),
+			},
+			"rack_position": {
+				Type:     schema.TypeFloat,
+				Optional: true,
+			},
+			customFieldsKey: customFieldsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -97,14 +125,13 @@ func resourceNetboxDeviceCreate(ctx context.Context, d *schema.ResourceData, m i
 		data.DeviceType = &typeID
 	}
 
-	comments := d.Get("comments").(string)
-	data.Comments = comments
+	data.Comments = d.Get("comments").(string)
 
-	serial := d.Get("serial").(string)
-	data.Serial = serial
+	data.Description = d.Get("description").(string)
 
-	status := d.Get("status").(string)
-	data.Status = status
+	data.Serial = d.Get("serial").(string)
+
+	data.Status = d.Get("status").(string)
 
 	tenantIDValue, ok := d.GetOk("tenant_id")
 	if ok {
@@ -142,6 +169,21 @@ func resourceNetboxDeviceCreate(ctx context.Context, d *schema.ResourceData, m i
 		data.Site = &siteID
 	}
 
+	data.Rack = getOptionalInt(d, "rack_id")
+	data.Face = getOptionalStr(d, "rack_face", false)
+
+	rackPosition, ok := d.GetOk("rack_position")
+	if ok && rackPosition.(float64) > 0 {
+		data.Position = float64ToPtr(rackPosition.(float64))
+	} else {
+		data.Position = nil
+	}
+
+	ct, ok := d.GetOk(customFieldsKey)
+	if ok {
+		data.CustomFields = ct
+	}
+
 	data.Tags, _ = getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
 
 	params := dcim.NewDcimDevicesCreateParams().WithData(&data)
@@ -167,11 +209,13 @@ func resourceNetboxDeviceRead(ctx context.Context, d *schema.ResourceData, m int
 
 	res, err := api.Dcim.DcimDevicesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*dcim.DcimDevicesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*dcim.DcimDevicesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return diag.FromErr(err)
 	}
@@ -188,6 +232,12 @@ func resourceNetboxDeviceRead(ctx context.Context, d *schema.ResourceData, m int
 		d.Set("primary_ipv4", device.PrimaryIp4.ID)
 	} else {
 		d.Set("primary_ipv4", nil)
+	}
+
+	if device.PrimaryIp6 != nil {
+		d.Set("primary_ipv6", device.PrimaryIp6.ID)
+	} else {
+		d.Set("primary_ipv6", nil)
 	}
 
 	if device.Tenant != nil {
@@ -226,11 +276,32 @@ func resourceNetboxDeviceRead(ctx context.Context, d *schema.ResourceData, m int
 		d.Set("site_id", nil)
 	}
 
+	cf := getCustomFields(res.GetPayload().CustomFields)
+	if cf != nil {
+		d.Set(customFieldsKey, cf)
+	}
+
 	d.Set("comments", device.Comments)
+
+	d.Set("description", device.Description)
 
 	d.Set("serial", device.Serial)
 
 	d.Set("status", device.Status.Value)
+
+	if device.Rack != nil {
+		d.Set("rack_id", device.Rack.ID)
+	} else {
+		d.Set("rack_id", nil)
+	}
+
+	if device.Face != nil {
+		d.Set("rack_face", device.Face.Value)
+	} else {
+		d.Set("rack_face", nil)
+	}
+
+	d.Set("rack_position", device.Position)
 
 	d.Set(tagsKey, getTagListFromNestedTagList(device.Tags))
 	return diags
@@ -290,34 +361,44 @@ func resourceNetboxDeviceUpdate(ctx context.Context, d *schema.ResourceData, m i
 		data.Site = &siteID
 	}
 
-	commentsValue, ok := d.GetOk("comments")
+	primaryIP4Value, ok := d.GetOk("primary_ipv4")
 	if ok {
-		comments := commentsValue.(string)
-		data.Comments = comments
-	} else {
-		comments := " "
-		data.Comments = comments
+		primaryIP4 := int64(primaryIP4Value.(int))
+		data.PrimaryIp4 = &primaryIP4
 	}
 
-	primaryIPValue, ok := d.GetOk("primary_ipv4")
+	primaryIP6Value, ok := d.GetOk("primary_ipv6")
 	if ok {
-		primaryIP := int64(primaryIPValue.(int))
-		data.PrimaryIp4 = &primaryIP
+		primaryIP6 := int64(primaryIP6Value.(int))
+		data.PrimaryIp6 = &primaryIP6
+	}
+
+	data.Rack = getOptionalInt(d, "rack_id")
+	data.Face = getOptionalStr(d, "rack_face", false)
+	data.Position = getOptionalFloat(d, "rack_position")
+
+	cf, ok := d.GetOk(customFieldsKey)
+	if ok {
+		data.CustomFields = cf
 	}
 
 	data.Tags, _ = getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
 
 	if d.HasChanges("comments") {
 		// check if comment is set
-		commentsValue, ok := d.GetOk("comments")
-		comments := ""
-		if !ok {
-			// Setting an space string deletes the comment
-			comments = " "
+		if commentsValue, ok := d.GetOk("comments"); ok {
+			data.Comments = commentsValue.(string)
 		} else {
-			comments = commentsValue.(string)
+			data.Comments = " "
 		}
-		data.Comments = comments
+	}
+	if d.HasChanges("description") {
+		// check if description is set
+		if descriptionValue, ok := d.GetOk("description"); ok {
+			data.Description = descriptionValue.(string)
+		} else {
+			data.Description = " "
+		}
 	}
 
 	if d.HasChanges("serial") {
@@ -353,6 +434,12 @@ func resourceNetboxDeviceDelete(ctx context.Context, d *schema.ResourceData, m i
 
 	_, err := api.Dcim.DcimDevicesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*dcim.DcimDevicesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return diag.FromErr(err)
 	}
 	return diags

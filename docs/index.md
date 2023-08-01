@@ -14,17 +14,17 @@ Use the navigation to the left to read about the available resources.
 ## Supported Netbox versions
 Netbox often makes breaking API changes even in non-major releases. Check the table below to see which version this provider is compatible with your Netbox version. It is generally recommended to use the provider version matching your Netbox version.
 
-Provider version | Netbox version
---- | ---
-v3.0.x | v3.3.0 and up
-v2.0.x | v3.2.0 and up
-v1.6.x and up| v3.1.9
-v1.1.x and up | v3.1.3
-v1.0.x | v3.0.9
-v0.3.x | v2.11.12
-v0.2.x | v2.10.10
-v0.1.x | v2.9
-v0.0.x | v2.9
+| Netbox version  | Provider version |
+| --------------- | ---------------- |
+| v3.4.3 - 3.4.10 | v3.5.2 and up    |
+| v3.3.0 - 3.4.2  | v3.0.x - 3.5.1   |
+| v3.2.0 - 3.2.9  | v2.0.x           |
+| v3.1.9          | v1.6.0 - 1.6.7   |
+| v3.1.3          | v1.1.x - 1.5.2   |
+| v3.0.9          | v1.0.x           |
+| v2.11.12        | v0.3.x           |
+| v2.10.10        | v0.2.x           |
+| v2.9            | v0.1.x           |
 
 Additionally, since version [1.6.6](https://github.com/e-breuninger/terraform-provider-netbox/commit/0b0b2fffa54d4ab2e5f1677e948b01e56ba211c8), each version of the provider has a built-in list of all Netbox versions it supports at release time. Upon initialization, the provider will probe your Netbox version and include a (non-blocking) warning if the used Netbox version is not supported.
 
@@ -38,7 +38,7 @@ terraform {
   required_providers {
     netbox = {
       source  = "e-breuninger/netbox"
-      version = "~> 2.0.1"
+      version = "~> 3.2.1"
     }
   }
 }
@@ -55,12 +55,13 @@ provider "netbox" {
 
 ### Required
 
-- `server_url` (String) Location of Netbox server including scheme (http or https) and optional port, but without trailing slash. Can be set via the `NETBOX_SERVER_URL` environment variable.
+- `api_token` (String) Netbox API authentication token. Can be set via the `NETBOX_API_TOKEN` environment variable.
+- `server_url` (String) Location of Netbox server including scheme (http or https) and optional port. Can be set via the `NETBOX_SERVER_URL` environment variable.
 
 ### Optional
 
-- `allow_insecure_https` (Boolean) Flag to set whether to allow https with invalid certificates. Can be set via the `NETBOX_ALLOW_INSECURE_HTTPS` environment variable.
-- `api_token` (String) Netbox API authentication token. Can be set via the `NETBOX_API_TOKEN` environment variable.
+- `allow_insecure_https` (Boolean) Flag to set whether to allow https with invalid certificates. Can be set via the `NETBOX_ALLOW_INSECURE_HTTPS` environment variable. Defaults to `false`.
 - `headers` (Map of String) Set these header on all requests to Netbox. Can be set via the `NETBOX_HEADERS` environment variable.
 - `request_timeout` (Number) Netbox API HTTP request timeout in seconds. Can be set via the `NETBOX_REQUEST_TIMEOUT` environment variable.
-- `skip_version_check` (Boolean) If true, do not try to determine the running Netbox version at provider startup. Disables warnings about possibly unsupported Netbox version. Also useful for local testing on terraform plans. Can be set via the `NETBOX_SKIP_VERSION_CHECK` environment variable.
+- `skip_version_check` (Boolean) If true, do not try to determine the running Netbox version at provider startup. Disables warnings about possibly unsupported Netbox version. Also useful for local testing on terraform plans. Can be set via the `NETBOX_SKIP_VERSION_CHECK` environment variable. Defaults to `false`.
+- `strip_trailing_slashes_from_url` (Boolean) If true, strip trailing slashes from the `server_url` parameter and print a warning when doing so. Note that using trailing slashes in the `server_url` parameter will usually lead to errors. Can be set via the `NETBOX_STRIP_TRAILING_SLASHES_FROM_URL` environment variable. Defaults to `true`.

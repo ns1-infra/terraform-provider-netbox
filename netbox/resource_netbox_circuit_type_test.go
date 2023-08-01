@@ -12,7 +12,6 @@ import (
 )
 
 func TestAccNetboxCircuitType_basic(t *testing.T) {
-
 	testSlug := "circuit_type"
 	testName := testAccGetTestName(testSlug)
 	randomSlug := testAccGetTestName(testSlug)
@@ -21,7 +20,7 @@ func TestAccNetboxCircuitType_basic(t *testing.T) {
 		PreCheck:  func() { testAccPreCheck(t) },
 		Steps: []resource.TestStep{
 			{
-				Config: fmt.Sprintf(`	  
+				Config: fmt.Sprintf(`
 resource "netbox_circuit_type" "test" {
   name = "%[1]s"
   slug = "%[2]s"

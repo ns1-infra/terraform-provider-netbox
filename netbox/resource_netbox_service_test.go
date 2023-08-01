@@ -33,7 +33,6 @@ resource "netbox_virtual_machine" "test" {
 }
 
 func TestAccNetboxService_basic(t *testing.T) {
-
 	testSlug := "svc_basic"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -87,9 +86,11 @@ func testAccCheckServiceDestroy(s *terraform.State) error {
 		}
 
 		if err != nil {
-			errorcode := err.(*ipam.IpamServicesReadDefault).Code()
-			if errorcode == 404 {
-				return nil
+			if errresp, ok := err.(*ipam.IpamServicesReadDefault); ok {
+				errorcode := errresp.Code()
+				if errorcode == 404 {
+					return nil
+				}
 			}
 			return err
 		}

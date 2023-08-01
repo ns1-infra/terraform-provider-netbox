@@ -70,10 +70,10 @@ func dataSourceNetboxRegionRead(d *schema.ResourceData, m interface{}) error {
 		for _, f := range filterParams.List() {
 			id := f.(map[string]interface{})["id"]
 			if id != nil {
-				vId := id.(int)
-				if vId != 0 {
-					vIdString := strconv.Itoa(vId)
-					params.ID = &vIdString
+				vID := id.(int)
+				if vID != 0 {
+					vIDString := strconv.Itoa(vID)
+					params.ID = &vIDString
 				}
 			}
 			name := f.(map[string]interface{})["name"]
@@ -95,15 +95,15 @@ func dataSourceNetboxRegionRead(d *schema.ResourceData, m interface{}) error {
 	}
 
 	if *res.GetPayload().Count > int64(1) {
-		return errors.New("More than one result. Specify a more narrow filter")
+		return errors.New("more than one result, specify a more narrow filter")
 	}
 	if *res.GetPayload().Count == int64(0) {
-		return errors.New("No result")
+		return errors.New("no result")
 	}
 	result := res.GetPayload().Results[0]
 	d.SetId(strconv.FormatInt(result.ID, 10))
 	d.Set("name", result.Name)
-	d.Set("slug", result.Name)
+	d.Set("slug", result.Slug)
 	d.Set("description", result.Description)
 	if result.Parent != nil {
 		d.Set("parent_region_id", result.Parent.ID)

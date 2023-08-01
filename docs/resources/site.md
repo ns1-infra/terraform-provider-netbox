@@ -46,9 +46,11 @@ resource "netbox_site" "example1" {
 - `group_id` (Number)
 - `latitude` (Number)
 - `longitude` (Number)
+- `physical_address` (String)
 - `region_id` (Number)
+- `shipping_address` (String)
 - `slug` (String)
-- `status` (String) Defaults to `active`.
+- `status` (String) Valid values are `planned`, `staging`, `active`, `decommissioning` and `retired`. Defaults to `active`.
 - `tags` (Set of String)
 - `tenant_id` (Number)
 - `timezone` (String)

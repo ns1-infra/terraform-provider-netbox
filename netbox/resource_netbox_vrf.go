@@ -25,6 +25,10 @@ func resourceNetboxVrf() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			"tenant_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
@@ -32,7 +36,7 @@ func resourceNetboxVrf() *schema.Resource {
 			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -42,12 +46,14 @@ func resourceNetboxVrfCreate(d *schema.ResourceData, m interface{}) error {
 	data := models.WritableVRF{}
 
 	name := d.Get("name").(string)
-	tenant_id := int64(d.Get("tenant_id").(int))
+	tenantID := int64(d.Get("tenant_id").(int))
 
 	data.Name = &name
-	if tenant_id != 0 {
-		data.Tenant = &tenant_id
+	if tenantID != 0 {
+		data.Tenant = &tenantID
 	}
+
+	data.Description = getOptionalStr(d, "description", true)
 
 	data.Tags, _ = getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
 
@@ -73,18 +79,22 @@ func resourceNetboxVrfRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Ipam.IpamVrfsRead(params, nil)
 	if err != nil {
-		errorcode := err.(*ipam.IpamVrfsReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*ipam.IpamVrfsReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
 
-	d.Set("name", res.GetPayload().Name)
-	if res.GetPayload().Tenant != nil {
-		d.Set("tenant_id", res.GetPayload().Tenant.ID)
+	vrf := res.GetPayload()
+	d.Set("name", vrf.Name)
+	d.Set("description", vrf.Description)
+	if vrf.Tenant != nil {
+		d.Set("tenant_id", vrf.Tenant.ID)
 	} else {
 		d.Set("tenant_id", nil)
 	}
@@ -105,6 +115,7 @@ func resourceNetboxVrfUpdate(d *schema.ResourceData, m interface{}) error {
 	data.Tags = tags
 	data.ExportTargets = []int64{}
 	data.ImportTargets = []int64{}
+	data.Description = getOptionalStr(d, "description", true)
 
 	if tenantID, ok := d.GetOk("tenant_id"); ok {
 		data.Tenant = int64ToPtr(int64(tenantID.(int)))
@@ -127,6 +138,12 @@ func resourceNetboxVrfDelete(d *schema.ResourceData, m interface{}) error {
 
 	_, err := api.Ipam.IpamVrfsDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*ipam.IpamVrfsDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

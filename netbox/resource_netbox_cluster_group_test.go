@@ -12,7 +12,6 @@ import (
 )
 
 func TestAccNetboxClusterGroup_basic(t *testing.T) {
-
 	testSlug := "clstrgrp_basic"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -42,7 +41,6 @@ resource "netbox_cluster_group" "test" {
 }
 
 func TestAccNetboxClusterGroup_defaultSlug(t *testing.T) {
-
 	testSlug := "clstrgrp_defSlug"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -57,7 +55,7 @@ resource "netbox_cluster_group" "test" {
 }`, testName),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("netbox_cluster_group.test", "name", testName),
-					resource.TestCheckResourceAttr("netbox_cluster_group.test", "slug", testName),
+					resource.TestCheckResourceAttr("netbox_cluster_group.test", "slug", getSlug(testName)),
 					resource.TestCheckResourceAttr("netbox_cluster_group.test", "description", testName),
 				),
 			},
@@ -80,9 +78,9 @@ func init() {
 			if err != nil {
 				return err
 			}
-			for _, cluster_group := range res.GetPayload().Results {
-				if strings.HasPrefix(*cluster_group.Name, testPrefix) {
-					deleteParams := virtualization.NewVirtualizationClusterGroupsDeleteParams().WithID(cluster_group.ID)
+			for _, clusterGroup := range res.GetPayload().Results {
+				if strings.HasPrefix(*clusterGroup.Name, testPrefix) {
+					deleteParams := virtualization.NewVirtualizationClusterGroupsDeleteParams().WithID(clusterGroup.ID)
 					_, err := api.Virtualization.VirtualizationClusterGroupsDelete(deleteParams, nil)
 					if err != nil {
 						return err

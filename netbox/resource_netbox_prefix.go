@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+var resourceNetboxPrefixStatusOptions = []string{"active", "container", "reserved", "deprecated"}
+
 func resourceNetboxPrefix() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceNetboxPrefixCreate,
@@ -32,7 +34,8 @@ func resourceNetboxPrefix() *schema.Resource {
 			"status": {
 				Type:         schema.TypeString,
 				Required:     true,
-				ValidateFunc: validation.StringInSlice([]string{"active", "reserved", "deprecated", "container"}, false),
+				ValidateFunc: validation.StringInSlice(resourceNetboxPrefixStatusOptions, false),
+				Description:  buildValidValueDescription(resourceNetboxPrefixStatusOptions),
 			},
 			"description": {
 				Type:     schema.TypeString,
@@ -69,7 +72,7 @@ func resourceNetboxPrefix() *schema.Resource {
 			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -80,16 +83,16 @@ func resourceNetboxPrefixCreate(d *schema.ResourceData, m interface{}) error {
 	prefix := d.Get("prefix").(string)
 	status := d.Get("status").(string)
 	description := d.Get("description").(string)
-	is_pool := d.Get("is_pool").(bool)
-	mark_utilized := d.Get("mark_utilized").(bool)
+	isPool := d.Get("is_pool").(bool)
+	markUtilized := d.Get("mark_utilized").(bool)
 
 	data.Prefix = &prefix
 	data.Status = status
 
 	data.Description = description
-	data.IsPool = is_pool
+	data.IsPool = isPool
 
-	data.MarkUtilized = mark_utilized
+	data.MarkUtilized = markUtilized
 
 	if vrfID, ok := d.GetOk("vrf_id"); ok {
 		data.Vrf = int64ToPtr(int64(vrfID.(int)))
@@ -130,11 +133,13 @@ func resourceNetboxPrefixRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Ipam.IpamPrefixesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*ipam.IpamPrefixesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*ipam.IpamPrefixesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -191,16 +196,20 @@ func resourceNetboxPrefixUpdate(d *schema.ResourceData, m interface{}) error {
 	data := models.WritablePrefix{}
 	prefix := d.Get("prefix").(string)
 	status := d.Get("status").(string)
-	description := d.Get("description").(string)
-	is_pool := d.Get("is_pool").(bool)
-	mark_utilized := d.Get("mark_utilized").(bool)
+	isPool := d.Get("is_pool").(bool)
+	markUtilized := d.Get("mark_utilized").(bool)
 
 	data.Prefix = &prefix
 	data.Status = status
 
-	data.Description = description
-	data.IsPool = is_pool
-	data.MarkUtilized = mark_utilized
+	data.IsPool = isPool
+	data.MarkUtilized = markUtilized
+
+	if description, ok := d.GetOk("description"); ok {
+		data.Description = description.(string)
+	} else {
+		data.Description = " "
+	}
 
 	if vrfID, ok := d.GetOk("vrf_id"); ok {
 		data.Vrf = int64ToPtr(int64(vrfID.(int)))
@@ -238,6 +247,12 @@ func resourceNetboxPrefixDelete(d *schema.ResourceData, m interface{}) error {
 	params := ipam.NewIpamPrefixesDeleteParams().WithID(id)
 	_, err := api.Ipam.IpamPrefixesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*ipam.IpamPrefixesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	d.SetId("")

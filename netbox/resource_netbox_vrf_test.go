@@ -35,7 +35,6 @@ resource "netbox_tenant" "test_tenant_b" {
 }
 
 func TestAccNetboxVrf_basic(t *testing.T) {
-
 	testSlug := "vrf_basic"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -45,10 +44,12 @@ func TestAccNetboxVrf_basic(t *testing.T) {
 			{
 				Config: fmt.Sprintf(`
 resource "netbox_vrf" "test" {
-  name = "%s"
+  name        = "%s"
+  description = "my-description"
 }`, testName),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("netbox_vrf.test", "name", testName),
+					resource.TestCheckResourceAttr("netbox_vrf.test", "description", "my-description"),
 				),
 			},
 			{
@@ -61,7 +62,6 @@ resource "netbox_vrf" "test" {
 }
 
 func TestAccNetboxVrf_tags(t *testing.T) {
-
 	testSlug := "vrf_tag"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -106,7 +106,6 @@ resource "netbox_vrf" "test_tags" {
 }
 
 func TestAccNetboxVrf_tenant(t *testing.T) {
-
 	testSlug := "vrf_tenant"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{

@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+var resourceNetboxSiteStatusOptions = []string{"planned", "staging", "active", "decommissioning", "retired"}
+
 func resourceNetboxSite() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceNetboxSiteCreate,
@@ -32,13 +34,14 @@ func resourceNetboxSite() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
-				ValidateFunc: validation.StringLenBetween(0, 30),
+				ValidateFunc: validation.StringLenBetween(0, 100),
 			},
 			"status": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Default:      "active",
-				ValidateFunc: validation.StringInSlice([]string{"planned", "staging", "active", "decommissioning", "retired"}, false),
+				ValidateFunc: validation.StringInSlice(resourceNetboxSiteStatusOptions, false),
+				Description:  buildValidValueDescription(resourceNetboxSiteStatusOptions),
 			},
 			"description": {
 				Type:         schema.TypeString,
@@ -57,6 +60,16 @@ func resourceNetboxSite() *schema.Resource {
 			"latitude": {
 				Type:     schema.TypeFloat,
 				Optional: true,
+			},
+			"physical_address": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringLenBetween(0, 200),
+			},
+			"shipping_address": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringLenBetween(0, 200),
 			},
 			"region_id": {
 				Type:     schema.TypeInt,
@@ -85,7 +98,7 @@ func resourceNetboxSite() *schema.Resource {
 			customFieldsKey: customFieldsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -99,9 +112,9 @@ func resourceNetboxSiteCreate(d *schema.ResourceData, m interface{}) error {
 	data.Name = &name
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(name)
+		data.Slug = strToPtr(getSlug(name))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}
@@ -126,6 +139,16 @@ func resourceNetboxSiteCreate(d *schema.ResourceData, m interface{}) error {
 		data.Longitude = float64ToPtr(float64(longitudeValue.(float64)))
 	}
 
+	physicalAddressValue, ok := d.GetOk("physical_address")
+	if ok {
+		data.PhysicalAddress = physicalAddressValue.(string)
+	}
+
+	shippingAddressValue, ok := d.GetOk("shipping_address")
+	if ok {
+		data.ShippingAddress = shippingAddressValue.(string)
+	}
+
 	regionIDValue, ok := d.GetOk("region_id")
 	if ok {
 		data.Region = int64ToPtr(int64(regionIDValue.(int)))
@@ -142,7 +165,7 @@ func resourceNetboxSiteCreate(d *schema.ResourceData, m interface{}) error {
 	}
 
 	if timezone, ok := d.GetOk("timezone"); ok {
-		data.TimeZone = timezone.(string)
+		data.TimeZone = strToPtr(timezone.(string))
 	}
 
 	data.Asns = []int64{}
@@ -177,11 +200,13 @@ func resourceNetboxSiteRead(d *schema.ResourceData, m interface{}) error {
 	res, err := api.Dcim.DcimSitesRead(params, nil)
 
 	if err != nil {
-		errorcode := err.(*dcim.DcimSitesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*dcim.DcimSitesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -195,6 +220,8 @@ func resourceNetboxSiteRead(d *schema.ResourceData, m interface{}) error {
 	d.Set("facility", site.Facility)
 	d.Set("longitude", site.Longitude)
 	d.Set("latitude", site.Latitude)
+	d.Set("physical_address", site.PhysicalAddress)
+	d.Set("shipping_address", site.ShippingAddress)
 	d.Set("timezone", site.TimeZone)
 	d.Set("asn_ids", getIDsFromNestedASNList(site.Asns))
 
@@ -235,9 +262,9 @@ func resourceNetboxSiteUpdate(d *schema.ResourceData, m interface{}) error {
 	data.Name = &name
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(name)
+		data.Slug = strToPtr(getSlug(name))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}
@@ -246,6 +273,9 @@ func resourceNetboxSiteUpdate(d *schema.ResourceData, m interface{}) error {
 
 	if description, ok := d.GetOk("description"); ok {
 		data.Description = description.(string)
+	} else if d.HasChange("description") {
+		// If GetOK returned unset description and its value changed, set it as a space string to delete it ...
+		data.Description = " "
 	}
 
 	if facility, ok := d.GetOk("facility"); ok {
@@ -260,6 +290,22 @@ func resourceNetboxSiteUpdate(d *schema.ResourceData, m interface{}) error {
 	longitudeValue, ok := d.GetOk("longitude")
 	if ok {
 		data.Longitude = float64ToPtr(float64(longitudeValue.(float64)))
+	}
+
+	physicalAddressValue, ok := d.GetOk("physical_address")
+	if ok {
+		data.PhysicalAddress = physicalAddressValue.(string)
+	} else if d.HasChange("physical_address") {
+		// If GetOK returned unset description and its value changed, set it as a space string to delete it ...
+		data.PhysicalAddress = " "
+	}
+
+	shippingAddressValue, ok := d.GetOk("shipping_address")
+	if ok {
+		data.ShippingAddress = shippingAddressValue.(string)
+	} else if d.HasChange("shipping_address") {
+		// If GetOK returned unset description and its value changed, set it as a space string to delete it ...
+		data.ShippingAddress = " "
 	}
 
 	regionIDValue, ok := d.GetOk("region_id")
@@ -278,7 +324,7 @@ func resourceNetboxSiteUpdate(d *schema.ResourceData, m interface{}) error {
 	}
 
 	if timezone, ok := d.GetOk("timezone"); ok {
-		data.TimeZone = timezone.(string)
+		data.TimeZone = strToPtr(timezone.(string))
 	}
 
 	data.Asns = []int64{}
@@ -311,6 +357,12 @@ func resourceNetboxSiteDelete(d *schema.ResourceData, m interface{}) error {
 
 	_, err := api.Dcim.DcimSitesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*dcim.DcimSitesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

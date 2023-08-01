@@ -8,7 +8,6 @@ import (
 )
 
 func TestAccNetboxTenantsDataSource_basic(t *testing.T) {
-
 	testSlug := "tnt_ds_basic"
 	testName := testAccGetTestName(testSlug)
 	resource.Test(t, resource.TestCase{
@@ -34,7 +33,7 @@ data "netbox_tenants" "test" {
 	})
 }
 
-func testAccNetboxTenantsDataSource_manyTenants(testName string) string {
+func testAccNetboxTenantsDataSourceManyTenants(testName string) string {
 	return fmt.Sprintf(`resource "netbox_tenant" "test" {
   count = 51
   name = "%s-${count.index}"
@@ -43,14 +42,13 @@ func testAccNetboxTenantsDataSource_manyTenants(testName string) string {
 }
 
 func TestAccNetboxTenantsDataSource_many(t *testing.T) {
-
 	testSlug := "tnt_ds_many"
 	testName := testAccGetTestName(testSlug)
 	resource.Test(t, resource.TestCase{
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccNetboxTenantsDataSource_manyTenants(testName) + `data "netbox_tenants" "test" {
+				Config: testAccNetboxTenantsDataSourceManyTenants(testName) + `data "netbox_tenants" "test" {
   depends_on = [netbox_tenant.test]
 }`,
 				Check: resource.ComposeTestCheckFunc(
@@ -58,7 +56,7 @@ func TestAccNetboxTenantsDataSource_many(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccNetboxTenantsDataSource_manyTenants(testName) + `data "netbox_tenants" "test" {
+				Config: testAccNetboxTenantsDataSourceManyTenants(testName) + `data "netbox_tenants" "test" {
   depends_on = [netbox_tenant.test]
   limit = 2
 }`,
@@ -71,7 +69,6 @@ func TestAccNetboxTenantsDataSource_many(t *testing.T) {
 }
 
 func TestAccNetboxTenantsDataSource_filter(t *testing.T) {
-
 	testSlug := "tnt_ds_filter"
 	testName := testAccGetTestName(testSlug)
 	resource.Test(t, resource.TestCase{
@@ -103,7 +100,6 @@ data "netbox_tenants" "test" {
 }
 
 func TestAccNetboxTenantsDataSource_tenantgroups(t *testing.T) {
-
 	testSlug := "tnt_ds_tenant_group_filter"
 	testName := testAccGetTestName(testSlug)
 	resource.Test(t, resource.TestCase{

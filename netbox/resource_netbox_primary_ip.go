@@ -20,15 +20,15 @@ func resourceNetboxPrimaryIP() *schema.Resource {
 		Description: `:meta:subcategory:Virtualization:This resource is used to define the primary IP for a given virtual machine. The primary IP is reflected in the Virtual machine Netbox UI, which identifies the Primary IPv4 and IPv6 addresses.`,
 
 		Schema: map[string]*schema.Schema{
-			"virtual_machine_id": &schema.Schema{
+			"virtual_machine_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"ip_address_id": &schema.Schema{
+			"ip_address_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"ip_address_version": &schema.Schema{
+			"ip_address_version": {
 				Type:         schema.TypeInt,
 				ValidateFunc: validation.IntInSlice([]int{4, 6}),
 				Optional:     true,
@@ -36,7 +36,7 @@ func resourceNetboxPrimaryIP() *schema.Resource {
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -54,11 +54,13 @@ func resourceNetboxPrimaryIPRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Virtualization.VirtualizationVirtualMachinesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*virtualization.VirtualizationVirtualMachinesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*virtualization.VirtualizationVirtualMachinesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -109,6 +111,7 @@ func resourceNetboxPrimaryIPUpdate(d *schema.ResourceData, m interface{}) error 
 		tag.Display = ""
 	}
 	data.Comments = vm.Comments
+	data.Description = vm.Description
 	data.Memory = vm.Memory
 	data.Vcpus = vm.Vcpus
 	data.Disk = vm.Disk
@@ -124,6 +127,7 @@ func resourceNetboxPrimaryIPUpdate(d *schema.ResourceData, m interface{}) error 
 	if vm.PrimaryIp4 != nil {
 		data.PrimaryIp4 = &vm.PrimaryIp4.ID
 	}
+
 	if vm.PrimaryIp6 != nil {
 		data.PrimaryIp6 = &vm.PrimaryIp6.ID
 	}
@@ -138,6 +142,14 @@ func resourceNetboxPrimaryIPUpdate(d *schema.ResourceData, m interface{}) error 
 
 	if vm.Role != nil {
 		data.Role = &vm.Role.ID
+	}
+
+	if vm.Device != nil {
+		data.Device = &vm.Device.ID
+	}
+
+	if vm.LocalContextData != nil {
+		data.LocalContextData = vm.LocalContextData
 	}
 
 	// unset primary ip address if -1 is passed as id

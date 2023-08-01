@@ -21,28 +21,28 @@ func resourceNetboxDeviceRole() *schema.Resource {
 > Devices can be organized by functional roles, which are fully customizable by the user. For example, you might create roles for core switches, distribution switches, and access switches within your network.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
-			"vm_role": &schema.Schema{
+			"vm_role": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
 			},
-			"color_hex": &schema.Schema{
+			"color_hex": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
 			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -54,9 +54,9 @@ func resourceNetboxDeviceRoleCreate(d *schema.ResourceData, m interface{}) error
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
 
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
@@ -94,11 +94,13 @@ func resourceNetboxDeviceRoleRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Dcim.DcimDeviceRolesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*dcim.DcimDeviceRolesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*dcim.DcimDeviceRolesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -124,9 +126,9 @@ func resourceNetboxDeviceRoleUpdate(d *schema.ResourceData, m interface{}) error
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
 
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
@@ -157,6 +159,12 @@ func resourceNetboxDeviceRoleDelete(d *schema.ResourceData, m interface{}) error
 
 	_, err := api.Dcim.DcimDeviceRolesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*dcim.DcimDeviceRolesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

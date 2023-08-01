@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+var resourceNetboxVlanStatusOptions = []string{"active", "reserved", "deprecated"}
+
 func resourceNetboxVlan() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceNetboxVlanCreate,
@@ -34,7 +36,12 @@ func resourceNetboxVlan() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Default:      "active",
-				ValidateFunc: validation.StringInSlice([]string{"active", "reserved", "deprecated"}, false),
+				ValidateFunc: validation.StringInSlice(resourceNetboxVlanStatusOptions, false),
+				Description:  buildValidValueDescription(resourceNetboxVlanStatusOptions),
+			},
+			"group_id": {
+				Type:     schema.TypeInt,
+				Optional: true,
 			},
 			"tenant_id": {
 				Type:     schema.TypeInt,
@@ -58,7 +65,7 @@ func resourceNetboxVlan() *schema.Resource {
 			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -76,6 +83,10 @@ func resourceNetboxVlanCreate(d *schema.ResourceData, m interface{}) error {
 	data.Vid = &vid
 	data.Status = status
 	data.Description = description
+
+	if groupID, ok := d.GetOk("group_id"); ok {
+		data.Group = int64ToPtr(int64(groupID.(int)))
+	}
 
 	if siteID, ok := d.GetOk("site_id"); ok {
 		data.Site = int64ToPtr(int64(siteID.(int)))
@@ -108,11 +119,13 @@ func resourceNetboxVlanRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Ipam.IpamVlansRead(params, nil)
 	if err != nil {
-		errorcode := err.(*ipam.IpamVlansReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*ipam.IpamVlansReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -126,6 +139,9 @@ func resourceNetboxVlanRead(d *schema.ResourceData, m interface{}) error {
 
 	if vlan.Status != nil {
 		d.Set("status", vlan.Status.Value)
+	}
+	if vlan.Group != nil {
+		d.Set("group_id", vlan.Group.ID)
 	}
 	if vlan.Site != nil {
 		d.Set("site_id", vlan.Site.ID)
@@ -153,6 +169,10 @@ func resourceNetboxVlanUpdate(d *schema.ResourceData, m interface{}) error {
 	data.Vid = &vid
 	data.Status = status
 	data.Description = description
+
+	if groupID, ok := d.GetOk("group_id"); ok {
+		data.Group = int64ToPtr(int64(groupID.(int)))
+	}
 
 	if siteID, ok := d.GetOk("site_id"); ok {
 		data.Site = int64ToPtr(int64(siteID.(int)))
@@ -182,6 +202,12 @@ func resourceNetboxVlanDelete(d *schema.ResourceData, m interface{}) error {
 	params := ipam.NewIpamVlansDeleteParams().WithID(id)
 	_, err := api.Ipam.IpamVlansDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*ipam.IpamVlansDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 

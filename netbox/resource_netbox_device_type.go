@@ -40,10 +40,15 @@ func resourceNetboxDeviceType() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			"u_height": {
+				Type:     schema.TypeFloat,
+				Optional: true,
+				Default:  "1.0",
+			},
 			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -57,9 +62,9 @@ func resourceNetboxDeviceTypeCreate(d *schema.ResourceData, m interface{}) error
 	data.Model = &model
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to model if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(model)
+		data.Slug = strToPtr(getSlug(model))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}
@@ -71,6 +76,10 @@ func resourceNetboxDeviceTypeCreate(d *schema.ResourceData, m interface{}) error
 
 	if partNo, ok := d.GetOk("part_number"); ok {
 		data.PartNumber = partNo.(string)
+	}
+
+	if uHeightValue, ok := d.GetOk("u_height"); ok {
+		data.UHeight = float64ToPtr(float64(uHeightValue.(float64)))
 	}
 
 	data.Tags, _ = getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
@@ -95,21 +104,24 @@ func resourceNetboxDeviceTypeRead(d *schema.ResourceData, m interface{}) error {
 	res, err := api.Dcim.DcimDeviceTypesRead(params, nil)
 
 	if err != nil {
-		errorcode := err.(*dcim.DcimDeviceTypesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*dcim.DcimDeviceTypesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
 
-	device_type := res.GetPayload()
-	d.Set("model", device_type.Model)
-	d.Set("slug", device_type.Slug)
-	d.Set("manufacturer_id", device_type.Manufacturer.ID)
-	d.Set("part_number", device_type.PartNumber)
-	d.Set(tagsKey, getTagListFromNestedTagList(device_type.Tags))
+	deviceType := res.GetPayload()
+	d.Set("model", deviceType.Model)
+	d.Set("slug", deviceType.Slug)
+	d.Set("manufacturer_id", deviceType.Manufacturer.ID)
+	d.Set("part_number", deviceType.PartNumber)
+	d.Set("u_height", deviceType.UHeight)
+	d.Set(tagsKey, getTagListFromNestedTagList(deviceType.Tags))
 
 	return nil
 }
@@ -124,9 +136,9 @@ func resourceNetboxDeviceTypeUpdate(d *schema.ResourceData, m interface{}) error
 	data.Model = &model
 
 	slugValue, slugOk := d.GetOk("slug")
-	// Default slug to model if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		data.Slug = strToPtr(model)
+		data.Slug = strToPtr(getSlug(model))
 	} else {
 		data.Slug = strToPtr(slugValue.(string))
 	}
@@ -138,6 +150,10 @@ func resourceNetboxDeviceTypeUpdate(d *schema.ResourceData, m interface{}) error
 
 	if partNo, ok := d.GetOk("part_number"); ok {
 		data.PartNumber = partNo.(string)
+	}
+
+	if uHeightValue, ok := d.GetOk("u_height"); ok {
+		data.UHeight = float64ToPtr(float64(uHeightValue.(float64)))
 	}
 
 	data.Tags, _ = getNestedTagListFromResourceDataSet(api, d.Get(tagsKey))
@@ -160,6 +176,12 @@ func resourceNetboxDeviceTypeDelete(d *schema.ResourceData, m interface{}) error
 
 	_, err := api.Dcim.DcimDeviceTypesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*dcim.DcimDeviceTypesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

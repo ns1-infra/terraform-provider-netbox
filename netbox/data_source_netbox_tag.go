@@ -14,15 +14,15 @@ func dataSourceNetboxTag() *schema.Resource {
 		Read:        dataSourceNetboxTagRead,
 		Description: `:meta:subcategory:Extras:`,
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"description": &schema.Schema{
+			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
@@ -45,10 +45,10 @@ func dataSourceNetboxTagRead(d *schema.ResourceData, m interface{}) error {
 	}
 
 	if *res.GetPayload().Count > int64(1) {
-		return errors.New("More than one result. Specify a more narrow filter")
+		return errors.New("more than one result, specify a more narrow filter")
 	}
 	if *res.GetPayload().Count == int64(0) {
-		return errors.New("No result")
+		return errors.New("no result")
 	}
 
 	result := res.GetPayload().Results[0]

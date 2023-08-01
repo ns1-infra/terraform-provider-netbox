@@ -12,7 +12,6 @@ import (
 )
 
 func TestAccNetboxRir_basic(t *testing.T) {
-
 	testSlug := "rir"
 	testName := testAccGetTestName(testSlug)
 	randomSlug := testAccGetTestName(testSlug)
@@ -23,12 +22,14 @@ func TestAccNetboxRir_basic(t *testing.T) {
 			{
 				Config: fmt.Sprintf(`
 resource "netbox_rir" "test_basic" {
-  name = "%s"
-  slug = "%s"
+  name        = "%s"
+  slug        = "%s"
+  description = "my-description"
 }`, testName, randomSlug),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("netbox_rir.test_basic", "name", testName),
 					resource.TestCheckResourceAttr("netbox_rir.test_basic", "slug", randomSlug),
+					resource.TestCheckResourceAttr("netbox_rir.test_basic", "description", "my-description"),
 				),
 			},
 			{

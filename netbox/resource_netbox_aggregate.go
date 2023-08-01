@@ -42,7 +42,7 @@ func resourceNetboxAggregate() *schema.Resource {
 			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -83,11 +83,13 @@ func resourceNetboxAggregateRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Ipam.IpamAggregatesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*ipam.IpamAggregatesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*ipam.IpamAggregatesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -148,6 +150,12 @@ func resourceNetboxAggregateDelete(d *schema.ResourceData, m interface{}) error 
 	params := ipam.NewIpamAggregatesDeleteParams().WithID(id)
 	_, err := api.Ipam.IpamAggregatesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*ipam.IpamAggregatesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	d.SetId("")

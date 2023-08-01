@@ -24,27 +24,27 @@ func resourceNetboxTenantGroup() *schema.Resource {
 > Tenant groups may be nested recursively to achieve a multi-level hierarchy. For example, you might have a group called "Customers" containing subgroups of individual tenants grouped by product or account team.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
 				ValidateFunc: validation.StringLenBetween(0, 30),
 			},
-			"parent_id": &schema.Schema{
+			"parent_id": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"description": &schema.Schema{
+			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -53,14 +53,14 @@ func resourceNetboxTenantGroupCreate(d *schema.ResourceData, m interface{}) erro
 	api := m.(*client.NetBoxAPI)
 
 	name := d.Get("name").(string)
-	parent_id := int64(d.Get("parent_id").(int))
+	parentID := int64(d.Get("parent_id").(int))
 	description := d.Get("description").(string)
 
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
-	// Default slug to name attribute if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
@@ -71,8 +71,8 @@ func resourceNetboxTenantGroupCreate(d *schema.ResourceData, m interface{}) erro
 	data.Description = description
 	data.Tags = []*models.NestedTag{}
 
-	if parent_id != 0 {
-		data.Parent = &parent_id
+	if parentID != 0 {
+		data.Parent = &parentID
 	}
 
 	params := tenancy.NewTenancyTenantGroupsCreateParams().WithData(data)
@@ -95,11 +95,13 @@ func resourceNetboxTenantGroupRead(d *schema.ResourceData, m interface{}) error 
 
 	res, err := api.Tenancy.TenancyTenantGroupsRead(params, nil)
 	if err != nil {
-		errorcode := err.(*tenancy.TenancyTenantGroupsReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*tenancy.TenancyTenantGroupsReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -121,13 +123,13 @@ func resourceNetboxTenantGroupUpdate(d *schema.ResourceData, m interface{}) erro
 
 	name := d.Get("name").(string)
 	description := d.Get("description").(string)
-	parent_id := int64(d.Get("parent_id").(int))
+	parentID := int64(d.Get("parent_id").(int))
 
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
@@ -137,8 +139,8 @@ func resourceNetboxTenantGroupUpdate(d *schema.ResourceData, m interface{}) erro
 	data.Description = description
 	data.Tags = []*models.NestedTag{}
 
-	if parent_id != 0 {
-		data.Parent = &parent_id
+	if parentID != 0 {
+		data.Parent = &parentID
 	}
 	params := tenancy.NewTenancyTenantGroupsPartialUpdateParams().WithID(id).WithData(&data)
 
@@ -158,6 +160,12 @@ func resourceNetboxTenantGroupDelete(d *schema.ResourceData, m interface{}) erro
 
 	_, err := api.Tenancy.TenancyTenantGroupsDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*tenancy.TenancyTenantGroupsDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

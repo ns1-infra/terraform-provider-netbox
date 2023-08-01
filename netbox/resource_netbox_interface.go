@@ -2,7 +2,6 @@ package netbox
 
 import (
 	"context"
-	"regexp"
 	"strconv"
 
 	"github.com/fbreckle/go-netbox/netbox/client"
@@ -13,9 +12,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-func resourceNetboxInterface() *schema.Resource {
-	validModes := []string{"access", "tagged", "tagged-all"}
+var resourceNetboxInterfaceModeOptions = []string{"access", "tagged", "tagged-all"}
 
+func resourceNetboxInterface() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourceNetboxInterfaceCreate,
 		ReadContext:   resourceNetboxInterfaceRead,
@@ -44,17 +43,15 @@ func resourceNetboxInterface() *schema.Resource {
 				Default:  true,
 			},
 			"mac_address": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ValidateFunc: validation.StringMatch(
-					regexp.MustCompile("^([A-Z0-9]{2}:){5}[A-Z0-9]{2}$"),
-					"Must be like AA:AA:AA:AA:AA"),
-				ForceNew: true,
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.IsMACAddress,
 			},
 			"mode": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.StringInSlice(validModes, false),
+				ValidateFunc: validation.StringInSlice(resourceNetboxInterfaceModeOptions, false),
+				Description:  buildValidValueDescription(resourceNetboxInterfaceModeOptions),
 			},
 			"mtu": {
 				Type:         schema.TypeInt,
@@ -80,7 +77,7 @@ func resourceNetboxInterface() *schema.Resource {
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -141,11 +138,13 @@ func resourceNetboxInterfaceRead(ctx context.Context, d *schema.ResourceData, m 
 
 	res, err := api.Virtualization.VirtualizationInterfacesRead(params, nil)
 	if err != nil {
-		errorcode := err.(*virtualization.VirtualizationInterfacesReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*virtualization.VirtualizationInterfacesReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return diag.FromErr(err)
 	}
@@ -229,6 +228,12 @@ func resourceNetboxInterfaceDelete(ctx context.Context, d *schema.ResourceData, 
 
 	_, err := api.Virtualization.VirtualizationInterfacesDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*virtualization.VirtualizationInterfacesDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return diag.FromErr(err)
 	}
 	return nil

@@ -22,19 +22,23 @@ func resourceNetboxRir() *schema.Resource {
 > Regional Internet registries are responsible for the allocation of globally-routable address space. The five RIRs are ARIN, RIPE, APNIC, LACNIC, and AFRINIC. However, some address space has been set aside for internal use, such as defined in RFCs 1918 and 6598. NetBox considers these RFCs as a sort of RIR as well; that is, an authority which "owns" certain address space. There also exist lower-tier registries which serve particular geographic areas.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
 				ValidateFunc: validation.StringLenBetween(1, 100),
 			},
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -45,15 +49,16 @@ func resourceNetboxRirCreate(d *schema.ResourceData, m interface{}) error {
 	name := d.Get("name").(string)
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
-	// Default slug to name attribute if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
 
 	data.Name = &name
 	data.Slug = &slug
+	data.Description = getOptionalStr(d, "description", true)
 	data.Tags = []*models.NestedTag{}
 
 	params := ipam.NewIpamRirsCreateParams().WithData(&data)
@@ -73,22 +78,22 @@ func resourceNetboxRirRead(d *schema.ResourceData, m interface{}) error {
 
 	res, err := api.Ipam.IpamRirsRead(params, nil)
 	if err != nil {
-		errorcode := err.(*ipam.IpamRirsReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*ipam.IpamRirsReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
 
-	if res.GetPayload().Name != nil {
-		d.Set("name", res.GetPayload().Name)
-	}
+	rir := res.GetPayload()
 
-	if res.GetPayload().Slug != nil {
-		d.Set("slug", res.GetPayload().Slug)
-	}
+	d.Set("name", rir.Name)
+	d.Set("slug", rir.Slug)
+	d.Set("description", rir.Description)
 
 	return nil
 }
@@ -101,15 +106,16 @@ func resourceNetboxRirUpdate(d *schema.ResourceData, m interface{}) error {
 	name := d.Get("name").(string)
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
-	// Default slug to name attribute if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
 
 	data.Name = &name
 	data.Slug = &slug
+	data.Description = getOptionalStr(d, "description", true)
 	data.Tags = []*models.NestedTag{}
 
 	params := ipam.NewIpamRirsUpdateParams().WithID(id).WithData(&data)
@@ -126,6 +132,12 @@ func resourceNetboxRirDelete(d *schema.ResourceData, m interface{}) error {
 	params := ipam.NewIpamRirsDeleteParams().WithID(id)
 	_, err := api.Ipam.IpamRirsDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*ipam.IpamRirsDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	d.SetId("")

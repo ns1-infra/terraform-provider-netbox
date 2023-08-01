@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+var resourceNetboxCircuitTerminationTermSideOptions = []string{"A", "Z"}
+
 func resourceNetboxCircuitTermination() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceNetboxCircuitTerminationCreate,
@@ -24,32 +26,33 @@ func resourceNetboxCircuitTermination() *schema.Resource {
 > Each circuit termination is attached to either a site or to a provider network. Site terminations may optionally be connected via a cable to a specific device interface or port within that site. Each termination must be assigned a port speed, and can optionally be assigned an upstream speed if it differs from the downstream speed (a common scenario with e.g. DOCSIS cable modems). Fields are also available to track cross-connect and patch panel details.`,
 
 		Schema: map[string]*schema.Schema{
-			"circuit_id": &schema.Schema{
+			"circuit_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"site_id": &schema.Schema{
+			"site_id": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
-			"port_speed": &schema.Schema{
+			"port_speed": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"upstream_speed": &schema.Schema{
+			"upstream_speed": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			"term_side": &schema.Schema{
+			"term_side": {
 				Type:         schema.TypeString,
 				Required:     true,
-				ValidateFunc: validation.StringInSlice([]string{"A", "Z"}, false),
+				ValidateFunc: validation.StringInSlice(resourceNetboxCircuitTerminationTermSideOptions, false),
+				Description:  buildValidValueDescription(resourceNetboxCircuitTerminationTermSideOptions),
 			},
 			tagsKey:         tagsSchema,
 			customFieldsKey: customFieldsSchema,
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -109,11 +112,13 @@ func resourceNetboxCircuitTerminationRead(d *schema.ResourceData, m interface{})
 	res, err := api.Circuits.CircuitsCircuitTerminationsRead(params, nil)
 
 	if err != nil {
-		errorcode := err.(*circuits.CircuitsCircuitTerminationsReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*circuits.CircuitsCircuitTerminationsReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -210,6 +215,12 @@ func resourceNetboxCircuitTerminationDelete(d *schema.ResourceData, m interface{
 
 	_, err := api.Circuits.CircuitsCircuitTerminationsDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*circuits.CircuitsCircuitTerminationsDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

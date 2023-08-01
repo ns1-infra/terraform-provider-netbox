@@ -22,23 +22,23 @@ func resourceNetboxClusterGroup() *schema.Resource {
 > Cluster groups may be created for the purpose of organizing clusters. The arrangement of clusters into groups is optional.`,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"slug": &schema.Schema{
+			"slug": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
 				ValidateFunc: validation.StringLenBetween(0, 30),
 			},
-			"description": &schema.Schema{
+			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 	}
 }
@@ -53,9 +53,9 @@ func resourceNetboxClusterGroupCreate(d *schema.ResourceData, m interface{}) err
 
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
-	// Default slug to name attribute if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
@@ -86,11 +86,13 @@ func resourceNetboxClusterGroupRead(d *schema.ResourceData, m interface{}) error
 
 	res, err := api.Virtualization.VirtualizationClusterGroupsRead(params, nil)
 	if err != nil {
-		errorcode := err.(*virtualization.VirtualizationClusterGroupsReadDefault).Code()
-		if errorcode == 404 {
-			// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
-			d.SetId("")
-			return nil
+		if errresp, ok := err.(*virtualization.VirtualizationClusterGroupsReadDefault); ok {
+			errorcode := errresp.Code()
+			if errorcode == 404 {
+				// If the ID is updated to blank, this tells Terraform the resource no longer exists (maybe it was destroyed out of band). Just like the destroy callback, the Read function should gracefully handle this case. https://www.terraform.io/docs/extend/writing-custom-providers.html
+				d.SetId("")
+				return nil
+			}
 		}
 		return err
 	}
@@ -112,9 +114,9 @@ func resourceNetboxClusterGroupUpdate(d *schema.ResourceData, m interface{}) err
 
 	slugValue, slugOk := d.GetOk("slug")
 	var slug string
-	// Default slug to name if not given
+	// Default slug to generated slug if not given
 	if !slugOk {
-		slug = name
+		slug = getSlug(name)
 	} else {
 		slug = slugValue.(string)
 	}
@@ -149,6 +151,12 @@ func resourceNetboxClusterGroupDelete(d *schema.ResourceData, m interface{}) err
 
 	_, err := api.Virtualization.VirtualizationClusterGroupsDelete(params, nil)
 	if err != nil {
+		if errresp, ok := err.(*virtualization.VirtualizationClusterGroupsDeleteDefault); ok {
+			if errresp.Code() == 404 {
+				d.SetId("")
+				return nil
+			}
+		}
 		return err
 	}
 	return nil

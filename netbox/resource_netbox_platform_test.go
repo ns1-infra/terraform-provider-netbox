@@ -12,7 +12,6 @@ import (
 )
 
 func TestAccNetboxPlatform_basic(t *testing.T) {
-
 	testSlug := "platform_basic"
 	testName := testAccGetTestName(testSlug)
 	randomSlug := testAccGetTestName(testSlug)
@@ -41,7 +40,6 @@ resource "netbox_platform" "test" {
 }
 
 func TestAccNetboxPlatform_defaultSlug(t *testing.T) {
-
 	testSlug := "platform_defSlug"
 	testName := testAccGetTestName(testSlug)
 	resource.ParallelTest(t, resource.TestCase{
@@ -55,7 +53,7 @@ resource "netbox_platform" "test" {
 }`, testName),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("netbox_platform.test", "name", testName),
-					resource.TestCheckResourceAttr("netbox_platform.test", "slug", testName),
+					resource.TestCheckResourceAttr("netbox_platform.test", "slug", getSlug(testName)),
 				),
 			},
 		},
